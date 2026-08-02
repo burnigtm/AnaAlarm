@@ -32,6 +32,10 @@ device**. Emulator results are useful additional evidence but do not replace the
 two physical runs. Use the signed candidate build and clear app data before each
 API-level run.
 
+The workflow's `AnaAlarm Internal` APK is useful for day-to-day tester installation, but it has a
+different application ID and dedicated internal key. It is not the production-signed candidate,
+Play AAB, or final release evidence requested below.
+
 For every row attach: device model, Android build/fingerprint, app version and
 version code, timezone, exact-alarm/full-screen/notification permission state,
 wall-clock timestamp, result, video URL, relevant `adb logcat`, and

@@ -17,6 +17,11 @@ bash "$repo_root/scripts/ci/run-instrumented-tests.sh" "$api_level"
 # One release smoke is enough; API 36 also exercises the current target-SDK behavior.
 if [[ "$api_level" == "36" ]]; then
   bash "$repo_root/scripts/ci/smoke-release.sh" "$api_level"
+  export ANAALARM_INTERNAL_VERSION_CODE="100"
+  export ANAALARM_INTERNAL_VERSION_SUFFIX="device-ci"
+  bash "$repo_root/scripts/ci/build-internal-apk.sh"
+  ANAALARM_INTERNAL_DEVICE_SMOKE=1 \
+    bash "$repo_root/scripts/ci/test-installable-apk.sh"
 else
   printf 'Release smoke is intentionally run on API 36.\n' \
     > "$ARTIFACT_DIR/release-smoke-skipped.txt"

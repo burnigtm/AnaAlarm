@@ -6,6 +6,26 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val internalVersionCode =
+    providers.environmentVariable("ANAALARM_INTERNAL_VERSION_CODE")
+        .orElse("1")
+        .map { raw ->
+            raw.toIntOrNull()?.takeIf { it in 1..2_100_000_000 }
+                ?: throw GradleException(
+                    "ANAALARM_INTERNAL_VERSION_CODE must be an integer from 1 to 2100000000."
+                )
+        }
+
+val internalVersionSuffix =
+    providers.environmentVariable("ANAALARM_INTERNAL_VERSION_SUFFIX")
+        .orElse("local")
+        .map { raw ->
+            raw.takeIf { it.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,63}")) }
+                ?: throw GradleException(
+                    "ANAALARM_INTERNAL_VERSION_SUFFIX must contain 1-64 safe filename characters."
+                )
+        }
+
 android {
     namespace = "com.anaalarm"
     compileSdk = 36
@@ -17,6 +37,7 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["appLabel"] = "@string/app_name"
     }
 
     buildTypes {
@@ -26,6 +47,13 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        create("internal") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".internal"
+            versionNameSuffix = "-internal.${internalVersionSuffix.get()}"
+            resValue("string", "internal_app_name", "AnaAlarm Internal")
+            manifestPlaceholders["appLabel"] = "@string/internal_app_name"
         }
     }
     compileOptions {
@@ -50,6 +78,14 @@ android {
 
     sourceSets {
         getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("internal")) { variant ->
+        variant.outputs.forEach { output ->
+            output.versionCode.set(internalVersionCode)
+        }
     }
 }
 

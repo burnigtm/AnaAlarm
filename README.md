@@ -173,10 +173,10 @@ AnaAlarm/
 ├── gradle.properties             # JVM args, AndroidX flags, test-platform switches
 ├── gradlew / gradlew.bat         # Gradle wrapper (no global Gradle needed)
 ├── local.properties              # sdk.dir — machine specific, NOT committed
-├── .github/workflows/android.yml # Host, API 26/API 36, and signed-release CI gates
+├── .github/workflows/android.yml # Three quality checks plus the gated installable APK
 ├── scripts/
 │   ├── run-instrumented-tests.ps1  # One-command Windows on-device test run
-│   └── ci/                         # Linux device runner and signed-release smoke helpers
+│   └── ci/                         # Device, release-smoke, and internal APK verification helpers
 ├── docs/                         # Architecture, AI, alarms, localization, testing, troubleshooting
 └── app/
     ├── build.gradle.kts          # Module config and dependencies
@@ -263,6 +263,15 @@ Everything after that is incremental.
 ```
 
 Output: `app/build/outputs/apk/release/app-release-unsigned.apk`
+
+### Ready-to-install CI build
+
+Successful trusted `main` runs can publish a signed, minified **AnaAlarm Internal** APK after the
+Host, API 26, and API 36 checks all pass and the signing environment's approval gate is satisfied.
+It uses the separate package `com.anaalarm.internal`, so it can coexist with a production
+installation. See
+[CI and installable APK builds](docs/CI_AND_INSTALLABLE_BUILDS.md) for download, checksum,
+installation, update, retention, and signing-key details.
 
 ### Android App Bundle (for the Play Store)
 
@@ -406,8 +415,12 @@ adb connect <phone-ip>:5555
 
 `assembleRelease` produces an unsigned release APK unless you supply the signing configuration
 described above. Sign it before hosting it anywhere. Users must enable "Install unknown apps"
-for their browser or file manager. Keep the same keystore forever — Android refuses to update
-an app whose signature changed.
+for their browser or file manager. Keep each package's signing key stable and backed up - Android
+refuses to update an app whose signature changed.
+
+For tester convenience, the GitHub workflow also publishes a separately signed
+`com.anaalarm.internal` APK. Its internal key must never be used for the production package or
+Google Play. See [docs/CI_AND_INSTALLABLE_BUILDS.md](docs/CI_AND_INSTALLABLE_BUILDS.md).
 
 ## 10. First run and configuration
 
@@ -616,6 +629,7 @@ Longer explanations for each of these: [docs/TROUBLESHOOTING.md](docs/TROUBLESHO
 | [docs/ALARM_SYSTEM.md](docs/ALARM_SYSTEM.md) | Scheduling, permissions, receivers, per-Android-version caveats |
 | [docs/LOCALIZATION.md](docs/LOCALIZATION.md) | How languages work and how to add one |
 | [docs/TESTING.md](docs/TESTING.md) | Automated suites, how to run them, and the manual QA checklist |
+| [docs/CI_AND_INSTALLABLE_BUILDS.md](docs/CI_AND_INSTALLABLE_BUILDS.md) | All four GitHub checks plus APK download, install, signing, retention, and rotation |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Symptom-by-symptom fixes |
 | [docs/RELIABILITY_AND_LATENCY.md](docs/RELIABILITY_AND_LATENCY.md) | Reliability invariants, latency budget, telemetry, and deferred streaming work |
 | [docs/SUPPLY_CHAIN.md](docs/SUPPLY_CHAIN.md) | Strict dependency verification/locking and pinned CI-action maintenance |

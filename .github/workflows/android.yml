@@ -18,6 +18,9 @@ jobs:
     name: Host checks
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    outputs:
+      internal-version-code: ${{ steps.internal-version.outputs.code }}
+      internal-version-suffix: ${{ steps.internal-version.outputs.suffix }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,6 +33,22 @@ jobs:
         uses: gradle/actions/wrapper-validation@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+      - name: Calculate internal version
+        id: internal-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if (( GITHUB_RUN_ATTEMPT < 1 || GITHUB_RUN_ATTEMPT > 99 )); then
+            echo "Run attempt must be between 1 and 99 to preserve version ordering." >&2
+            exit 1
+          fi
+          version_code=$((GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))
+          if (( version_code < 1 || version_code > 2100000000 )); then
+            echo "Calculated version code is outside Android's supported range." >&2
+            exit 1
+          fi
+          echo "code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "suffix=${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
       - name: Unit tests and Android-test compilation
         run: >-
           bash ./gradlew testDebugUnitTest compileDebugAndroidTestKotlin
@@ -38,12 +57,56 @@ jobs:
         run: >-
           bash ./gradlew assembleDebug assembleRelease
           --dependency-verification=strict --no-parallel --stacktrace
+      - name: Rehearse installable APK packaging
+        env:
+          ANAALARM_INTERNAL_VERSION_CODE: ${{ steps.internal-version.outputs.code }}
+          ANAALARM_INTERNAL_VERSION_SUFFIX: ${{ steps.internal-version.outputs.suffix }}
+        run: |
+          bash -n scripts/ci/*.sh
+          bash scripts/ci/build-internal-apk.sh
+          bash scripts/ci/test-installable-apk.sh
       - name: Debug and release lint
         # Keep lint separate from release KSP/R8: AGP lint workers can otherwise race generated
         # Room sources while another variant is regenerating them.
+        env:
+          ANAALARM_INTERNAL_VERSION_CODE: ${{ steps.internal-version.outputs.code }}
+          ANAALARM_INTERNAL_VERSION_SUFFIX: ${{ steps.internal-version.outputs.suffix }}
         run: >-
           bash ./gradlew lintDebug lintRelease
           --dependency-verification=strict --no-parallel --stacktrace
+      - name: Internal lint
+        # Serialize this after the other lint variants; cross-variant lint workers can otherwise
+        # read internal KSP sources while AGP is regenerating them.
+        env:
+          ANAALARM_INTERNAL_VERSION_CODE: ${{ steps.internal-version.outputs.code }}
+          ANAALARM_INTERNAL_VERSION_SUFFIX: ${{ steps.internal-version.outputs.suffix }}
+        run: >-
+          bash ./gradlew lintInternal
+          --dependency-verification=strict --no-parallel --stacktrace
+      - name: Stage unsigned signer input
+        if: >-
+          github.ref == 'refs/heads/main' &&
+          (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e artifacts/unsigned-input
+          mkdir -p artifacts/unsigned-input
+          cp app/build/outputs/apk/internal/app-internal-unsigned.apk \
+            artifacts/unsigned-input/app-internal-unsigned.apk
+          cp app/build/outputs/mapping/internal/mapping.txt \
+            artifacts/unsigned-input/mapping.txt
+      - name: Upload unsigned internal build
+        if: >-
+          github.ref == 'refs/heads/main' &&
+          (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: anaalarm-internal-unsigned-${{ github.run_number }}-${{ github.run_attempt }}
+          path: artifacts/unsigned-input/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
       - name: Upload host reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -101,3 +164,66 @@ jobs:
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
           if-no-files-found: warn
+
+  installable:
+    name: Installable APK
+    needs: [host, device]
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment:
+      name: internal-distribution
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Java 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Download validated unsigned build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: anaalarm-internal-unsigned-${{ github.run_number }}-${{ github.run_attempt }}
+          path: unsigned-input
+      - name: Sign and verify installable APK
+        shell: bash
+        env:
+          ANAALARM_INTERNAL_KEYSTORE_BASE64: ${{ secrets.ANAALARM_INTERNAL_KEYSTORE_BASE64 }}
+          ANAALARM_INTERNAL_STORE_PASSWORD: ${{ secrets.ANAALARM_INTERNAL_STORE_PASSWORD }}
+          ANAALARM_INTERNAL_KEY_PASSWORD: ${{ secrets.ANAALARM_INTERNAL_KEY_PASSWORD }}
+          ANAALARM_INTERNAL_CERT_SHA256: ${{ vars.ANAALARM_INTERNAL_CERT_SHA256 }}
+          ANAALARM_INTERNAL_VERSION_CODE: ${{ needs.host.outputs.internal-version-code }}
+          ANAALARM_INTERNAL_VERSION_SUFFIX: ${{ needs.host.outputs.internal-version-suffix }}
+          ANAALARM_INTERNAL_UNSIGNED_APK: ${{ github.workspace }}/unsigned-input/app-internal-unsigned.apk
+          ANAALARM_INTERNAL_MAPPING_FILE: ${{ github.workspace }}/unsigned-input/mapping.txt
+        run: |
+          set -euo pipefail
+          : "${ANAALARM_INTERNAL_KEYSTORE_BASE64:?Internal keystore secret is not configured}"
+          : "${ANAALARM_INTERNAL_STORE_PASSWORD:?Internal store password is not configured}"
+          : "${ANAALARM_INTERNAL_KEY_PASSWORD:?Internal key password is not configured}"
+          umask 077
+          keystore="${RUNNER_TEMP:?}/anaalarm-internal.p12"
+          cleanup() { rm -f -- "$keystore"; }
+          trap cleanup EXIT
+          printf '%s' "$ANAALARM_INTERNAL_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          test -s "$keystore"
+          unset ANAALARM_INTERNAL_KEYSTORE_BASE64
+          export ANAALARM_INTERNAL_KEYSTORE_PATH="$keystore"
+          export ANAALARM_INTERNAL_KEY_ALIAS="anaalarm-internal"
+          bash scripts/ci/sign-installable-apk.sh
+      - name: Upload installable APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: anaalarm-installable-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            artifacts/installable/AnaAlarm-internal-*.apk
+            artifacts/installable/AnaAlarm-internal-*.apk.sha256
+            artifacts/installable/build-info.txt
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
