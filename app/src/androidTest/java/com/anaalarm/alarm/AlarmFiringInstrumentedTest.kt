@@ -2,10 +2,12 @@ package com.anaalarm.alarm
 
 import android.content.Intent
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
@@ -153,13 +155,11 @@ class AlarmFiringInstrumentedTest {
 
         // Query the app's Compose tree so a heads-up notification action with the same label
         // cannot satisfy the assertion or receive the click.
-        compose.onNodeWithTag(WAKE_STOP_TEST_TAG)
-            .assertIsDisplayed()
-            .performClick()
+        performWakeAction(WAKE_STOP_TEST_TAG)
 
         assertTrue(
             "wake-up screen stayed open after Stop",
-            device.wait(Until.gone(By.text(str(R.string.wake_up_title))), 15_000)
+            waitForWakeActionToDisappear(WAKE_STOP_TEST_TAG)
         )
         assertTrue(
             "fallback service remained active after explicit Stop",
@@ -183,13 +183,11 @@ class AlarmFiringInstrumentedTest {
 
         val earliest = System.currentTimeMillis() + 6 * 60_000L
         val latest = System.currentTimeMillis() + 8 * 60_000L
-        compose.onNodeWithTag(WAKE_SNOOZE_TEST_TAG)
-            .assertIsDisplayed()
-            .performClick()
+        performWakeAction(WAKE_SNOOZE_TEST_TAG)
 
         assertTrue(
             "Snooze did not close the failed wake session",
-            device.wait(Until.gone(By.text(str(R.string.wake_up_title))), 15_000)
+            waitForWakeActionToDisappear(WAKE_SNOOZE_TEST_TAG)
         )
         assertTrue(
             "Snooze did not register the configured exact alarm",
@@ -217,11 +215,22 @@ class AlarmFiringInstrumentedTest {
             }.getOrDefault(false)
         }
 
+    private fun performWakeAction(tag: String) {
+        compose.onNodeWithTag(tag)
+            .assertIsDisplayed()
+            .performSemanticsAction(SemanticsActions.OnClick)
+    }
+
+    private fun waitForWakeActionToDisappear(tag: String): Boolean =
+        TestEnv.waitUntil(timeoutMs = 15_000) {
+            compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isEmpty()
+        }
+
     private fun dismissWakeUpScreen() {
         repeat(3) {
-            if (!device.hasObject(By.text(str(R.string.wake_up_title)))) return
-            runCatching { compose.onNodeWithTag(WAKE_STOP_TEST_TAG).performClick() }
-            device.wait(Until.gone(By.text(str(R.string.wake_up_title))), 5_000)
+            if (compose.onAllNodesWithTag(WAKE_STOP_TEST_TAG).fetchSemanticsNodes().isEmpty()) return
+            runCatching { performWakeAction(WAKE_STOP_TEST_TAG) }
+            if (waitForWakeActionToDisappear(WAKE_STOP_TEST_TAG)) return
         }
         device.pressHome()
     }
