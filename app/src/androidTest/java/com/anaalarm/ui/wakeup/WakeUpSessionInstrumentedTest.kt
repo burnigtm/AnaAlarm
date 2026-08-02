@@ -6,10 +6,13 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -193,7 +196,11 @@ class WakeUpSessionInstrumentedTest {
         startSessionWithApiKey()
         compose.awaitText("Good morning Marina!", timeoutMs = 40_000)
 
-        compose.onNodeWithText(str(R.string.stop)).performClick()
+        // Exercise the Button's accessibility action directly. Raw touch injection is not
+        // deterministic while the wake Activity owns lock-screen/system-window flags.
+        compose.onNodeWithTag(WAKE_STOP_TEST_TAG)
+            .assertIsDisplayed()
+            .performSemanticsAction(SemanticsActions.OnClick)
 
         assertTrue(
             "wake-up activity did not finish",
