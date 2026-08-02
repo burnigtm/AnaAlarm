@@ -3,6 +3,7 @@ package com.anaalarm.alarm
 import android.content.Intent
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
@@ -16,6 +17,8 @@ import com.anaalarm.MainActivity
 import com.anaalarm.R
 import com.anaalarm.support.TestEnv
 import com.anaalarm.support.str
+import com.anaalarm.ui.wakeup.WAKE_SNOOZE_TEST_TAG
+import com.anaalarm.ui.wakeup.WAKE_STOP_TEST_TAG
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -150,7 +153,7 @@ class AlarmFiringInstrumentedTest {
 
         // Query the app's Compose tree so a heads-up notification action with the same label
         // cannot satisfy the assertion or receive the click.
-        compose.onNodeWithText(str(R.string.stop))
+        compose.onNodeWithTag(WAKE_STOP_TEST_TAG)
             .assertIsDisplayed()
             .performClick()
 
@@ -180,7 +183,7 @@ class AlarmFiringInstrumentedTest {
 
         val earliest = System.currentTimeMillis() + 6 * 60_000L
         val latest = System.currentTimeMillis() + 8 * 60_000L
-        compose.onNodeWithText(str(R.string.snooze_action))
+        compose.onNodeWithTag(WAKE_SNOOZE_TEST_TAG)
             .assertIsDisplayed()
             .performClick()
 
@@ -217,7 +220,7 @@ class AlarmFiringInstrumentedTest {
     private fun dismissWakeUpScreen() {
         repeat(3) {
             if (!device.hasObject(By.text(str(R.string.wake_up_title)))) return
-            device.findObject(By.text(str(R.string.stop)))?.click()
+            runCatching { compose.onNodeWithTag(WAKE_STOP_TEST_TAG).performClick() }
             device.wait(Until.gone(By.text(str(R.string.wake_up_title))), 5_000)
         }
         device.pressHome()

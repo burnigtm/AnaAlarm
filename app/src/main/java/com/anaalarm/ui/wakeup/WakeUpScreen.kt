@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -45,6 +46,9 @@ import com.anaalarm.R
 import kotlinx.coroutines.delay
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+
+internal const val WAKE_SNOOZE_TEST_TAG = "wake_snooze_action"
+internal const val WAKE_STOP_TEST_TAG = "wake_stop_action"
 
 @Composable
 fun WakeUpScreen(controller: SessionController) {
@@ -208,6 +212,7 @@ fun WakeUpScreen(controller: SessionController) {
                     onClick = { controller.snoozeNow() },
                     enabled = !controller.snoozeInFlight,
                     modifier = Modifier
+                        .testTag(WAKE_SNOOZE_TEST_TAG)
                         .fillMaxWidth()
                         .height(56.dp)
                 ) {
@@ -226,6 +231,7 @@ fun WakeUpScreen(controller: SessionController) {
                     contentColor = MaterialTheme.colorScheme.onError
                 ),
                 modifier = Modifier
+                    .testTag(WAKE_STOP_TEST_TAG)
                     .fillMaxWidth()
                     .height(64.dp)
             ) {
