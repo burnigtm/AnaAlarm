@@ -141,7 +141,7 @@ class AlarmFiringInstrumentedTest {
         )
         assertTrue(
             "no-key failure did not become visible",
-            device.wait(Until.hasObject(By.text(str(R.string.no_api_key))), 30_000)
+            waitForVisibleComposeText(str(R.string.no_api_key))
         )
         assertTrue(
             "AI failure silenced the local alarm before explicit user action",
@@ -175,7 +175,7 @@ class AlarmFiringInstrumentedTest {
         TestEnv.context.sendBroadcast(fireIntent(alarmId))
         assertTrue(
             "no-key failure did not become visible before Snooze",
-            device.wait(Until.hasObject(By.text(str(R.string.no_api_key))), 30_000)
+            waitForVisibleComposeText(str(R.string.no_api_key))
         )
 
         val earliest = System.currentTimeMillis() + 6 * 60_000L
@@ -205,6 +205,14 @@ class AlarmFiringInstrumentedTest {
             .setClass(TestEnv.context, AlarmReceiver::class.java)
             .putExtra(AlarmReceiver.EXTRA_ALARM_ID, alarmId)
             .putExtra(AlarmReceiver.EXTRA_IS_SNOOZE, isSnooze)
+
+    private fun waitForVisibleComposeText(text: String): Boolean =
+        TestEnv.waitUntil(timeoutMs = 30_000) {
+            runCatching {
+                compose.onNodeWithText(text).assertIsDisplayed()
+                true
+            }.getOrDefault(false)
+        }
 
     private fun dismissWakeUpScreen() {
         repeat(3) {
