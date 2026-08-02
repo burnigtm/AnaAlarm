@@ -223,12 +223,25 @@ class AlarmFiringInstrumentedTest {
 
     private fun waitForWakeActionToDisappear(tag: String): Boolean =
         TestEnv.waitUntil(timeoutMs = 15_000) {
+            wakeActionIsAbsent(tag)
+        }
+
+    private fun wakeActionIsAbsent(tag: String): Boolean =
+        try {
             compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isEmpty()
+        } catch (exception: IllegalStateException) {
+            // Once finish() removes the Activity's composition, Compose has no hierarchy to
+            // query. That is the strongest possible evidence that this in-app action is gone.
+            if (exception.message?.contains("No compose hierarchies found") == true) {
+                true
+            } else {
+                throw exception
+            }
         }
 
     private fun dismissWakeUpScreen() {
         repeat(3) {
-            if (compose.onAllNodesWithTag(WAKE_STOP_TEST_TAG).fetchSemanticsNodes().isEmpty()) return
+            if (wakeActionIsAbsent(WAKE_STOP_TEST_TAG)) return
             runCatching { performWakeAction(WAKE_STOP_TEST_TAG) }
             if (waitForWakeActionToDisappear(WAKE_STOP_TEST_TAG)) return
         }

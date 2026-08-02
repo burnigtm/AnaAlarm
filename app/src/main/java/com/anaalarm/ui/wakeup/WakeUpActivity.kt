@@ -10,20 +10,24 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.compose.runtime.LaunchedEffect
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.anaalarm.AnaAlarmApp
 import com.anaalarm.alarm.AlarmReceiver
 import com.anaalarm.alarm.AlarmScheduleResult
 import com.anaalarm.alarm.AlarmService
 import com.anaalarm.alarm.Notifications
 import com.anaalarm.ui.theme.AnaAlarmTheme
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 class WakeUpActivity : ComponentActivity() {
 
     private val sessionViewModel: WakeUpSessionViewModel by viewModels()
     private var directBootMode = false
+    private var finishObserverStarted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -83,14 +87,21 @@ class WakeUpActivity : ComponentActivity() {
     }
 
     private fun installContent() {
+        observeFinishRequest()
         setContent {
             val controller = sessionViewModel.controller
             AnaAlarmTheme(darkTheme = true) {
                 controller?.let { WakeUpScreen(controller = it) }
             }
-            LaunchedEffect(sessionViewModel.finishRequested) {
-                if (sessionViewModel.finishRequested) finish()
-            }
+        }
+    }
+
+    private fun observeFinishRequest() {
+        if (finishObserverStarted) return
+        finishObserverStarted = true
+        lifecycleScope.launch {
+            sessionViewModel.finishRequested.filter { it }.first()
+            finish()
         }
     }
 

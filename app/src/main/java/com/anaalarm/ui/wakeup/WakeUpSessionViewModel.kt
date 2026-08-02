@@ -7,6 +7,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.anaalarm.AnaAlarmApp
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /** Owns the live wake session across rotation/fold/large-screen configuration changes. */
 class WakeUpSessionViewModel(application: Application) : AndroidViewModel(application) {
@@ -15,8 +17,8 @@ class WakeUpSessionViewModel(application: Application) : AndroidViewModel(applic
 
     var controller by mutableStateOf<SessionController?>(null)
         private set
-    var finishRequested by mutableStateOf(false)
-        private set
+    private val mutableFinishRequested = MutableStateFlow(false)
+    val finishRequested = mutableFinishRequested.asStateFlow()
 
     val activeAlarmId: Long get() = activeAlarmIdValue
     private var activeAlarmIdValue = -1L
@@ -34,11 +36,11 @@ class WakeUpSessionViewModel(application: Application) : AndroidViewModel(applic
 
     private fun install(alarmId: Long, voiceAvailable: Boolean) {
         activeAlarmIdValue = alarmId
-        finishRequested = false
+        mutableFinishRequested.value = false
         controller = SessionController(
             app = app,
             scope = viewModelScope,
-            onFinished = { finishRequested = true },
+            onFinished = { mutableFinishRequested.value = true },
             voiceAvailable = voiceAvailable,
             alarmId = alarmId
         ).also { it.start() }
