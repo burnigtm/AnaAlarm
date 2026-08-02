@@ -102,10 +102,27 @@ verify_output="$("$apksigner" verify --verbose --print-certs "$signed_apk")"
 printf '%s\n' "$verify_output"
 "$zipalign" -c -P 16 4 "$signed_apk"
 
-actual_cert="$(sed -n \
-  's/^Signer #1 certificate SHA-256 digest: //p' <<<"$verify_output" | head -n 1)"
-actual_cert="$(normalize_digest "$actual_cert")"
-if [[ ! "$actual_cert" =~ ^[0-9a-f]{64}$ ]] || [[ "$actual_cert" != "$expected_cert" ]]; then
+reported_certs="$(sed -nE \
+  's/^.*Signer(:| #[0-9]+) certificate SHA-256 digest:[[:space:]]*//p' \
+  <<<"$verify_output")"
+if [[ -z "$reported_certs" ]]; then
+  echo "Could not read a signer certificate from apksigner output." >&2
+  exit 1
+fi
+actual_cert=""
+while IFS= read -r reported_cert; do
+  normalized_cert="$(normalize_digest "$reported_cert")"
+  if [[ ! "$normalized_cert" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "apksigner reported an invalid certificate SHA-256 digest." >&2
+    exit 1
+  fi
+  if [[ -n "$actual_cert" && "$normalized_cert" != "$actual_cert" ]]; then
+    echo "apksigner reported more than one signing certificate." >&2
+    exit 1
+  fi
+  actual_cert="$normalized_cert"
+done <<<"$reported_certs"
+if [[ "$actual_cert" != "$expected_cert" ]]; then
   echo "Signed APK certificate does not match the configured internal certificate." >&2
   exit 1
 fi
