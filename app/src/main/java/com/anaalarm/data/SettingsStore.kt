@@ -7,7 +7,9 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "anaalarm_settings")
@@ -22,10 +24,21 @@ data class AppSettings(
     val snoozeMinutes: Int = 10
 )
 
-class SettingsStore(private val context: Context) {
+class SettingsStore internal constructor(
+    private val dataStore: DataStore<Preferences>,
+    private val secretCipher: SecretCipher
+) {
+
+    constructor(context: Context) : this(context.dataStore, KeystoreSecretCipher())
+
+    private val secretCacheLock = Any()
+
+    @Volatile
+    private var cachedApiKey: CachedSecret? = null
 
     private object Keys {
         val API_KEY = stringPreferencesKey("api_key")
+        val API_KEY_ENCRYPTED = stringPreferencesKey("api_key_encrypted")
         val NAME = stringPreferencesKey("name")
         val LANGUAGE = stringPreferencesKey("language")
         val HABITS = stringPreferencesKey("habits")
@@ -34,9 +47,9 @@ class SettingsStore(private val context: Context) {
         val SNOOZE_MINUTES = intPreferencesKey("snooze_minutes")
     }
 
-    val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
+    val settings: Flow<AppSettings> = dataStore.data.map { p ->
         AppSettings(
-            apiKey = p[Keys.API_KEY] ?: "",
+            apiKey = readApiKey(p),
             name = p[Keys.NAME] ?: "",
             language = p[Keys.LANGUAGE] ?: "en",
             habits = SettingsLists.split(p[Keys.HABITS]),
@@ -44,7 +57,7 @@ class SettingsStore(private val context: Context) {
             sessionMinutes = p[Keys.SESSION_MINUTES] ?: 10,
             snoozeMinutes = p[Keys.SNOOZE_MINUTES] ?: 10
         )
-    }
+    }.flowOn(Dispatchers.IO)
 
     suspend fun update(
         apiKey: String? = null,
@@ -55,8 +68,19 @@ class SettingsStore(private val context: Context) {
         sessionMinutes: Int? = null,
         snoozeMinutes: Int? = null
     ) {
-        context.dataStore.edit { p ->
-            apiKey?.let { p[Keys.API_KEY] = sanitizeSecret(it) }
+        var writtenSecret: CachedSecret? = null
+        dataStore.edit { p ->
+            apiKey?.let { value ->
+                val sanitized = sanitizeSecret(value)
+                val encrypted = if (sanitized.isEmpty()) null else encryptWithRecovery(sanitized)
+                if (encrypted == null) {
+                    p.remove(Keys.API_KEY_ENCRYPTED)
+                } else {
+                    p[Keys.API_KEY_ENCRYPTED] = encrypted
+                }
+                p.remove(Keys.API_KEY)
+                writtenSecret = CachedSecret(encrypted, legacy = null, plainText = sanitized)
+            }
             name?.let { p[Keys.NAME] = it.trim() }
             language?.let { p[Keys.LANGUAGE] = it }
             habits?.let { p[Keys.HABITS] = SettingsLists.join(it) }
@@ -64,6 +88,92 @@ class SettingsStore(private val context: Context) {
             sessionMinutes?.let { p[Keys.SESSION_MINUTES] = it }
             snoozeMinutes?.let { p[Keys.SNOOZE_MINUTES] = it }
         }
+        writtenSecret?.let { cachedApiKey = it }
+    }
+
+    /**
+     * Migrates plaintext credentials and repairs unrecoverable Keystore state. A corrupt encrypted
+     * value is replaced from the legacy value when possible; otherwise it is removed so the app
+     * fails closed and lets the user enter a new credential.
+     */
+    suspend fun migrateLegacyApiKey() {
+        var migratedSecret: CachedSecret? = null
+        dataStore.edit { p ->
+            val encrypted = p[Keys.API_KEY_ENCRYPTED]
+            val legacy = sanitizeSecret(p[Keys.API_KEY].orEmpty())
+            val decrypted = encrypted?.let(secretCipher::decrypt)
+
+            when {
+                decrypted != null -> {
+                    p.remove(Keys.API_KEY)
+                    migratedSecret = CachedSecret(encrypted, legacy = null, plainText = decrypted)
+                }
+
+                legacy.isNotEmpty() -> {
+                    if (encrypted != null) runCatching(secretCipher::resetKey)
+                    val replacement = encryptWithRecovery(legacy)
+                    p[Keys.API_KEY_ENCRYPTED] = replacement
+                    p.remove(Keys.API_KEY)
+                    migratedSecret = CachedSecret(replacement, legacy = null, plainText = legacy)
+                }
+
+                encrypted != null -> {
+                    runCatching(secretCipher::resetKey)
+                    p.remove(Keys.API_KEY_ENCRYPTED)
+                    p.remove(Keys.API_KEY)
+                    migratedSecret = CachedSecret(null, legacy = null, plainText = "")
+                }
+
+                else -> {
+                    p.remove(Keys.API_KEY)
+                    migratedSecret = CachedSecret(null, legacy = null, plainText = "")
+                }
+            }
+        }
+        migratedSecret?.let { cachedApiKey = it }
+    }
+
+    private fun readApiKey(preferences: Preferences): String {
+        val encrypted = preferences[Keys.API_KEY_ENCRYPTED]
+        val legacy = preferences[Keys.API_KEY]
+        cachedApiKey?.takeIf { it.matches(encrypted, legacy) }?.let { return it.plainText }
+
+        return synchronized(secretCacheLock) {
+            cachedApiKey?.takeIf { it.matches(encrypted, legacy) }?.plainText ?: run {
+                val plainText = encrypted?.let(secretCipher::decrypt)
+                    ?: legacy?.let(::sanitizeSecret)
+                    ?: ""
+                plainText.also {
+                    cachedApiKey = CachedSecret(encrypted, legacy, plainText)
+                }
+            }
+        }
+    }
+
+    private fun encryptWithRecovery(plainText: String): String = try {
+        secretCipher.encrypt(plainText)
+    } catch (firstFailure: Exception) {
+        try {
+            secretCipher.resetKey()
+        } catch (resetFailure: Exception) {
+            firstFailure.addSuppressed(resetFailure)
+            throw firstFailure
+        }
+        try {
+            secretCipher.encrypt(plainText)
+        } catch (retryFailure: Exception) {
+            retryFailure.addSuppressed(firstFailure)
+            throw retryFailure
+        }
+    }
+
+    private data class CachedSecret(
+        val encrypted: String?,
+        val legacy: String?,
+        val plainText: String
+    ) {
+        fun matches(currentEncrypted: String?, currentLegacy: String?): Boolean =
+            encrypted == currentEncrypted && legacy == currentLegacy
     }
 
     companion object {

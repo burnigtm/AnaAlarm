@@ -36,6 +36,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +49,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.anaalarm.AnaAlarmApp
 import com.anaalarm.R
 import com.anaalarm.alarm.Notifications
@@ -74,12 +78,25 @@ fun HomeScreen(
     val alarms by vm.alarms.collectAsState()
 
     val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-    val canExact = remember {
+    fun hasExactAlarmPermission(): Boolean =
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             alarmManager.canScheduleExactAlarms()
         } else true
+    var canExact by remember { mutableStateOf(hasExactAlarmPermission()) }
+    var canFullScreen by remember {
+        mutableStateOf(Notifications.canUseFullScreenIntent(context))
     }
-    val canFullScreen = remember { Notifications.canUseFullScreenIntent(context) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, alarmManager) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                canExact = hasExactAlarmPermission()
+                canFullScreen = Notifications.canUseFullScreenIntent(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     var confirmDelete by remember { mutableStateOf<AlarmEntity?>(null) }
 
     Scaffold(

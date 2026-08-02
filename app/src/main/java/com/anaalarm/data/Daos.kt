@@ -41,6 +41,9 @@ interface MessageDao {
 
     @Query("DELETE FROM messages WHERE sessionId = :sessionId")
     suspend fun clearSession(sessionId: Long)
+
+    @Query("DELETE FROM messages WHERE timestamp < :cutoffTimestamp")
+    suspend fun deleteOlderThan(cutoffTimestamp: Long): Int
 }
 
 @Dao

@@ -2,6 +2,7 @@ package com.anaalarm.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.anaalarm.alarm.AlarmScheduleResult
 import com.anaalarm.alarm.AlarmScheduler
 import com.anaalarm.data.AlarmEntity
 import com.anaalarm.data.MemoryStore
@@ -31,7 +32,13 @@ class HomeViewModel(
             memory.setAlarmEnabled(alarm.id, enabled)
             val updated = memory.getAlarm(alarm.id) ?: alarm.copy(enabled = enabled)
             if (enabled) {
-                scheduler.schedule(updated)
+                val result = scheduler.schedule(updated)
+                if (result is AlarmScheduleResult.Failed) {
+                    // The switch must represent reality: an alarm that the OS rejected is not
+                    // enabled. Keeping it disabled also prevents a misleading boot re-arm.
+                    memory.setAlarmEnabled(alarm.id, false)
+                    scheduler.cancel(updated)
+                }
             } else {
                 scheduler.cancel(updated)
             }

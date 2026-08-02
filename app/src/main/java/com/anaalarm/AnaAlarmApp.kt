@@ -1,6 +1,8 @@
 package com.anaalarm
 
 import android.app.Application
+import android.os.UserManager
+import android.util.Log
 import androidx.annotation.VisibleForTesting
 import com.anaalarm.ai.ConversationEngine
 import com.anaalarm.ai.DeepSeekClient
@@ -14,6 +16,7 @@ import com.anaalarm.voice.TtsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class AnaAlarmApp : Application() {
 
@@ -23,32 +26,85 @@ class AnaAlarmApp : Application() {
         private set
     lateinit var memoryStore: MemoryStore
         private set
-    lateinit var deepSeekClient: DeepSeekClient
-        private set
-    lateinit var conversationEngine: ConversationEngine
-        private set
-    lateinit var ttsManager: TtsManager
-        private set
-    lateinit var speechListener: SpeechListener
-        private set
+    @Volatile
+    private var deepSeekClientInstance: DeepSeekClient? = null
+    val deepSeekClient: DeepSeekClient
+        get() = deepSeekClientInstance ?: synchronized(this) {
+            deepSeekClientInstance ?: DeepSeekClient(settingsStore).also {
+                deepSeekClientInstance = it
+            }
+        }
+
+    @Volatile
+    private var conversationEngineInstance: ConversationEngine? = null
+    val conversationEngine: ConversationEngine
+        get() = conversationEngineInstance ?: synchronized(this) {
+            conversationEngineInstance ?: newConversationEngine().also {
+                conversationEngineInstance = it
+            }
+        }
+
+    @Volatile
+    private var ttsManagerInstance: TtsManager? = null
+    var ttsManager: TtsManager
+        get() = ttsManagerInstance ?: synchronized(this) {
+            ttsManagerInstance ?: TtsManager(this).also { ttsManagerInstance = it }
+        }
+        private set(value) {
+            ttsManagerInstance = value
+        }
+
+    @Volatile
+    private var speechListenerInstance: SpeechListener? = null
+    var speechListener: SpeechListener
+        get() = speechListenerInstance ?: synchronized(this) {
+            speechListenerInstance ?: SpeechListener(this).also { speechListenerInstance = it }
+        }
+        private set(value) {
+            speechListenerInstance = value
+        }
     lateinit var alarmScheduler: AlarmScheduler
         private set
+
+    @Volatile
+    private var credentialStorageReady = false
 
     override fun onCreate() {
         super.onCreate()
         Notifications.createChannel(this)
-
-        val db = AnaDatabase.get(this)
-        settingsStore = SettingsStore(this)
-        memoryStore = MemoryStore(db, settingsStore)
-        deepSeekClient = DeepSeekClient(settingsStore)
-        conversationEngine = ConversationEngine(deepSeekClient, memoryStore, settingsStore)
-        ttsManager = TtsManager(this)
-        speechListener = SpeechListener(this)
         alarmScheduler = AlarmScheduler(this)
-        // Re-arm with setAlarmClock so existing alarms get full-screen wake behavior.
-        alarmScheduler.rescheduleAll()
+        if (ensureCredentialStorage()) {
+            // Reconcile Room, the direct-boot mirror, and AlarmManager on every normal process start.
+            alarmScheduler.rescheduleAll()
+        } else {
+            Log.i(TAG, "Credential storage remains unopened until USER_UNLOCKED")
+        }
     }
+
+    /** True only after the first device unlock following boot. */
+    fun isUserUnlocked(): Boolean =
+        getSystemService(UserManager::class.java)?.isUserUnlocked != false
+
+    /**
+     * Initializes Room/DataStore only when credential-encrypted storage is legally available.
+     * Direct-boot receivers, the alarm service, and the minimal wake UI must not call these fields
+     * until this returns true.
+     */
+    fun ensureCredentialStorage(): Boolean {
+        if (!isUserUnlocked()) return false
+        if (credentialStorageReady) return true
+        synchronized(this) {
+            if (credentialStorageReady) return true
+            val db = AnaDatabase.get(this)
+            settingsStore = SettingsStore(this)
+            memoryStore = MemoryStore(db, settingsStore)
+            credentialStorageReady = true
+            applicationScope.launch { settingsStore.migrateLegacyApiKey() }
+        }
+        return true
+    }
+
+    internal fun isCredentialStorageReadyForTest(): Boolean = credentialStorageReady
 
     /**
      * Swaps the AI stack for one talking to [client]. Instrumented tests use this to point the
@@ -56,18 +112,34 @@ class AnaAlarmApp : Application() {
      */
     @VisibleForTesting
     fun overrideAiBackend(client: DeepSeekClient?) {
-        deepSeekClient = client ?: DeepSeekClient(settingsStore)
-        conversationEngine = ConversationEngine(deepSeekClient, memoryStore, settingsStore)
+        synchronized(this) {
+            deepSeekClientInstance = client
+            conversationEngineInstance = client?.let {
+                ConversationEngine(it, memoryStore, settingsStore)
+            }
+        }
     }
+
+    /** Each wake activity owns isolated mutable conversation state; network/storage are shared. */
+    fun newConversationEngine(): ConversationEngine =
+        ConversationEngine(deepSeekClient, memoryStore, settingsStore)
 
     /** Rebuild TTS if the engine failed to bind (common after long idle / OEM kills). */
     fun recreateTts() {
-        runCatching { ttsManager.shutdown() }
-        ttsManager = TtsManager(this)
+        synchronized(this) {
+            ttsManagerInstance?.let { runCatching { it.shutdown() } }
+            ttsManager = TtsManager(this)
+        }
     }
 
     fun recreateSpeech() {
-        runCatching { speechListener.destroy() }
-        speechListener = SpeechListener(this)
+        synchronized(this) {
+            speechListenerInstance?.let { runCatching { it.destroy() } }
+            speechListener = SpeechListener(this)
+        }
+    }
+
+    private companion object {
+        const val TAG = "AnaAlarm"
     }
 }

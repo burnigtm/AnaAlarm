@@ -95,7 +95,8 @@ class DeepSeekClientInstrumentedTest {
         val body = JSONObject(recorded.body.readUtf8())
         assertEquals("deepseek-v4-flash", body.getString("model"))
         assertEquals(instructions, body.getString("instructions"))
-        assertEquals(400, body.getInt("max_output_tokens"))
+        assertEquals(96, body.getInt("max_output_tokens"))
+        assertEquals("none", body.getJSONObject("reasoning").getString("effort"))
         assertTrue(!body.getBoolean("stream"))
 
         val turns = body.getJSONArray("input")
@@ -168,6 +169,6 @@ class DeepSeekClientInstrumentedTest {
     fun apiKeysAreNeverLoggedInFull() {
         assertEquals("missing", DeepSeekClient.maskKey("   "))
         assertEquals("set(len=6)", DeepSeekClient.maskKey("sk-abc"))
-        assertEquals("set(len=13, sk-…90)", DeepSeekClient.maskKey("sk-1234567890"))
+        assertEquals("set(len=13)", DeepSeekClient.maskKey("sk-1234567890"))
     }
 }

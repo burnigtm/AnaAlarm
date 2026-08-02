@@ -9,7 +9,6 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,8 +29,8 @@ class AlarmSchedulerInstrumentedTest {
     @Before
     fun setUp() {
         TestEnv.clearDatabase()
-        assumeTrue(
-            "SCHEDULE_EXACT_ALARM not granted on this device",
+        assertTrue(
+            "SCHEDULE_EXACT_ALARM must be granted for the required alarm suite",
             scheduler.canScheduleExact()
         )
         awaitNoPendingAlarmClock()
@@ -47,8 +46,9 @@ class AlarmSchedulerInstrumentedTest {
         val alarm = alarmInFiveMinutes(id = 4001)
         val expected = expectedTrigger(alarm)
 
-        scheduler.schedule(alarm)
+        val result = scheduler.schedule(alarm)
 
+        assertTrue(result is AlarmScheduleResult.Scheduled)
         assertTrue(
             "system next-alarm-clock never became $expected",
             TestEnv.waitUntil { nextTrigger() == expected }
@@ -75,8 +75,9 @@ class AlarmSchedulerInstrumentedTest {
         val alarm = alarmInFiveMinutes(id = 4003).copy(enabled = false)
         val expected = expectedTrigger(alarm)
 
-        scheduler.schedule(alarm)
+        val result = scheduler.schedule(alarm)
 
+        assertEquals(AlarmScheduleResult.Cancelled, result)
         Thread.sleep(500)
         assertNotEquals(expected, nextTrigger())
     }
@@ -113,6 +114,56 @@ class AlarmSchedulerInstrumentedTest {
         scheduler.rescheduleNext(id)
 
         assertTrue(TestEnv.waitUntil { nextTrigger() == expected })
+    }
+
+    @Test
+    fun snoozeUsesTheStoredDurationAndRegistersAnExactAlarm() = runBlocking {
+        val id = TestEnv.app.memoryStore.upsertAlarm(0, 6, 30, 0, 7, false)
+        val before = LocalDateTime.now()
+
+        val result = scheduler.scheduleSnooze(id)
+
+        assertTrue(result is AlarmScheduleResult.Scheduled)
+        val scheduled = result as AlarmScheduleResult.Scheduled
+        assertTrue(!scheduled.triggerAt.isBefore(before.plusMinutes(7)))
+        assertTrue(!scheduled.triggerAt.isAfter(LocalDateTime.now().plusMinutes(7).plusSeconds(2)))
+        assertTrue(TestEnv.waitUntil { nextTrigger() == scheduled.triggerAtMillis })
+    }
+
+    @Test
+    fun unlockReconciliationRetiresAOneShotThatFiredWhileLocked() = runBlocking {
+        val target = LocalDateTime.now().plusMinutes(8)
+        val id = TestEnv.app.memoryStore.upsertAlarm(
+            id = 0,
+            hour = target.hour,
+            minute = target.minute,
+            days = 0,
+            snoozeMinutes = 14,
+            enabled = true
+        )
+        val stored = TestEnv.app.memoryStore.getAlarm(id)!!
+        assertTrue(scheduler.schedule(stored) is AlarmScheduleResult.Scheduled)
+        assertEquals(FiredAlarmResult.OneShotDisabled, scheduler.handleDirectBootFiredAlarm(id))
+
+        scheduler.reconcileUnlockedNow()
+
+        assertEquals(false, TestEnv.app.memoryStore.getAlarm(id)?.enabled)
+        assertEquals(null, scheduler.directBootSnapshot(id))
+    }
+
+    @Test
+    fun unlockReconciliationCancelsAStaleEnabledMirror() = runBlocking {
+        val stale = alarmInFiveMinutes(id = 4007)
+        val staleTrigger = expectedTrigger(stale)
+        assertTrue(scheduler.schedule(stale) is AlarmScheduleResult.Scheduled)
+        assertTrue(TestEnv.waitUntil { nextTrigger() == staleTrigger })
+
+        // The alarm is intentionally absent from Room, modelling a credential-side
+        // disable/delete that was interrupted before device-protected cleanup completed.
+        scheduler.reconcileUnlockedNow()
+
+        assertEquals(null, scheduler.directBootSnapshot(stale.id))
+        assertTrue(TestEnv.waitUntil { nextTrigger() != staleTrigger })
     }
 
     @Test

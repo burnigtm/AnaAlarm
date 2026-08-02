@@ -118,11 +118,16 @@ class ConversationEngineInstrumentedTest {
         assertEquals("Glad to hear it.", reply)
 
         val turns = lastRequestBody().getJSONArray("input")
-        assertEquals(2, turns.length())
-        assertEquals("assistant", turns.getJSONObject(0).getString("role"))
-        assertEquals("Good morning!", turns.getJSONObject(0).getString("content"))
-        assertEquals("user", turns.getJSONObject(1).getString("role"))
-        assertEquals("I slept really well", turns.getJSONObject(1).getString("content"))
+        assertEquals(3, turns.length())
+        assertEquals("user", turns.getJSONObject(0).getString("role"))
+        assertEquals(
+            "Please begin the wake-up greeting now.",
+            turns.getJSONObject(0).getString("content")
+        )
+        assertEquals("assistant", turns.getJSONObject(1).getString("role"))
+        assertEquals("Good morning!", turns.getJSONObject(1).getString("content"))
+        assertEquals("user", turns.getJSONObject(2).getString("role"))
+        assertEquals("I slept really well", turns.getJSONObject(2).getString("content"))
     }
 
     @Test
@@ -135,9 +140,9 @@ class ConversationEngineInstrumentedTest {
         repeat(2) { server.takeRequest() }
         val turns = JSONObject(server.takeRequest()!!.body.readUtf8()).getJSONArray("input")
 
-        // greeting + first user turn + first reply + second user turn
-        assertEquals(4, turns.length())
-        assertEquals("second", turns.getJSONObject(3).getString("content"))
+        // synthetic greeting prompt + greeting + first user turn + first reply + second user turn
+        assertEquals(5, turns.length())
+        assertEquals("second", turns.getJSONObject(4).getString("content"))
     }
 
     @Test
@@ -196,5 +201,21 @@ class ConversationEngineInstrumentedTest {
         } catch (e: ApiException) {
             assertEquals("invalid api key", e.message)
         }
+    }
+
+    @Test
+    fun failedGreetingDoesNotEraseAnEarlierDailyLog() = runBlocking {
+        TestEnv.app.memoryStore.saveDailyLog("earlier successful session")
+        server.enqueueHttpError(401)
+
+        try {
+            engine.startSession()
+            throw AssertionError("expected ApiException")
+        } catch (_: ApiException) {
+            // Expected.
+        }
+        engine.endSession()
+
+        assertEquals("earlier successful session", TestEnv.app.memoryStore.todaySummary())
     }
 }

@@ -14,6 +14,7 @@
     <string name="alarm_scheduled_today">Alarm set for today at %1$s</string>
     <string name="alarm_scheduled_tomorrow">Alarm set for tomorrow at %1$s</string>
     <string name="alarm_scheduled_day">Alarm set for %1$s at %2$s</string>
+    <string name="alarm_schedule_failed">Could not schedule this alarm. Check alarm permissions and try again.</string>
     <string name="enabled_label">Enabled</string>
     <string name="delete">Delete</string>
     <string name="save">Save</string>
@@ -57,13 +58,15 @@
     <string name="status_thinking">Thinking…</string>
     <string name="status_starting">Starting…</string>
     <string name="status_ended">Session over. Time to get up!</string>
+    <string name="snooze_action">Snooze</string>
+    <string name="snooze_failed">Couldn\'t schedule snooze. Keep this screen open and try again.</string>
     <string name="stop">Stop</string>
     <string name="you_said">You said</string>
     <string name="did_not_catch">Sorry, I did not catch that. Please try again.</string>
     <string name="mic_error">I could not hear you. Please tap Stop or check the microphone.</string>
     <string name="ai_error">I could not reach the AI. Please check your API key and internet connection.</string>
     <string name="invalid_api_key">DeepSeek rejected the API key. Open Settings and paste a valid key from platform.deepseek.com.</string>
-    <string name="ssl_error">Secure connection failed. If you use antivirus HTTPS scanning (for example Avast), turn it off for the emulator or install its certificate on the device.</string>
+    <string name="ssl_error">Secure connection failed. Disable HTTPS inspection for api.deepseek.com or use a network without interception.</string>
     <string name="network_error">Network error talking to DeepSeek. Check that the emulator/device has internet access.</string>
     <string name="type_fallback_hint">Type your answer here (voice is unavailable)…</string>
     <string name="type_fallback_switch">I cannot hear you. Use the text box to answer.</string>

@@ -89,10 +89,11 @@ class NotificationsInstrumentedTest {
     }
 
     @Test
-    fun fullScreenIntentCapabilityIsReported() {
-        // Value depends on the grant state; the call itself must never throw.
-        val allowed = Notifications.canUseFullScreenIntent(context)
-        assertTrue(allowed || !allowed)
+    fun fullScreenIntentCapabilityIsGrantedForAlarmTests() {
+        assertTrue(
+            "USE_FULL_SCREEN_INTENT must be granted for the required notification/firing suite",
+            Notifications.canUseFullScreenIntent(context)
+        )
     }
 
     @Test
@@ -105,6 +106,7 @@ class NotificationsInstrumentedTest {
         assertNotNull(notification.contentIntent)
         assertNull("session notification must not ring", notification.fullScreenIntent)
         assertTrue(notification.flags and Notification.FLAG_ONGOING_EVENT != 0)
+        assertEquals(context.getString(com.anaalarm.R.string.stop), notification.actions.single().title)
     }
 
     @Test
@@ -120,6 +122,9 @@ class NotificationsInstrumentedTest {
         assertEquals(Notification.PRIORITY_MAX, notification.priority)
         assertNotNull("the fallback alert must open the wake-up screen", notification.fullScreenIntent)
         assertNotNull(notification.contentIntent)
+        assertTrue(notification.flags and Notification.FLAG_ONGOING_EVENT != 0)
+        assertTrue(notification.flags and Notification.FLAG_AUTO_CANCEL == 0)
+        assertEquals(context.getString(com.anaalarm.R.string.stop), notification.actions.single().title)
     }
 
     @Test

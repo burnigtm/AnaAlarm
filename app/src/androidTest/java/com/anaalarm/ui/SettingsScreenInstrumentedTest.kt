@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -70,11 +71,11 @@ class SettingsScreenInstrumentedTest {
         openSettings()
 
         compose.onNodeWithText(str(R.string.api_key_hint)).assertIsDisplayed()
-        compose.onNodeWithText(str(R.string.habits_hint)).assertIsDisplayed()
-        compose.onNodeWithText(str(R.string.interests_hint)).assertIsDisplayed()
-        compose.onNodeWithText("10 min").assertIsDisplayed()
-        compose.onNodeWithText(str(R.string.language_en)).assertIsSelected()
-        compose.onNodeWithText(str(R.string.language_pt)).assertIsNotSelected()
+        compose.onNodeWithText(str(R.string.habits_hint)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.interests_hint)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("10 min").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.language_en)).performScrollTo().assertIsSelected()
+        compose.onNodeWithText(str(R.string.language_pt)).performScrollTo().assertIsNotSelected()
     }
 
     @Test
@@ -84,12 +85,14 @@ class SettingsScreenInstrumentedTest {
         compose.onNodeWithText(str(R.string.api_key_hint)).performTextReplacement("sk-from-ui")
         compose.onNodeWithText("Ana").performTextReplacement("Marina")
         compose.onNodeWithText(str(R.string.habits_hint))
+            .performScrollTo()
             .performTextReplacement("water the plants, make coffee")
         compose.onNodeWithText(str(R.string.interests_hint))
+            .performScrollTo()
             .performTextReplacement("photography, books")
-        compose.onNodeWithText(str(R.string.language_pt)).performClick()
+        compose.onNodeWithText(str(R.string.language_pt)).performScrollTo().performClick()
 
-        compose.onNodeWithText(str(R.string.save)).performClick()
+        compose.onNodeWithText(str(R.string.save)).performScrollTo().performClick()
         compose.awaitText(str(R.string.settings_saved))
 
         val settings = TestEnv.settings()
@@ -104,8 +107,10 @@ class SettingsScreenInstrumentedTest {
     fun savedValuesArePrefilledWhenSettingsIsReopened() {
         openSettings()
         compose.onNodeWithText("Ana").performTextReplacement("InstrumentedUser")
-        compose.onNodeWithText(str(R.string.habits_hint)).performTextReplacement("stretch")
-        compose.onNodeWithText(str(R.string.save)).performClick()
+        compose.onNodeWithText(str(R.string.habits_hint))
+            .performScrollTo()
+            .performTextReplacement("stretch")
+        compose.onNodeWithText(str(R.string.save)).performScrollTo().performClick()
         compose.awaitText(str(R.string.settings_saved))
 
         back()
@@ -113,14 +118,14 @@ class SettingsScreenInstrumentedTest {
 
         compose.awaitText("InstrumentedUser")
         compose.onNodeWithText("InstrumentedUser").assertIsDisplayed()
-        compose.onNodeWithText("stretch").assertIsDisplayed()
+        compose.onNodeWithText("stretch").performScrollTo().assertIsDisplayed()
     }
 
     @Test
     fun languageChoiceIsRememberedAcrossVisits() {
         openSettings()
-        compose.onNodeWithText(str(R.string.language_pt)).performClick()
-        compose.onNodeWithText(str(R.string.save)).performClick()
+        compose.onNodeWithText(str(R.string.language_pt)).performScrollTo().performClick()
+        compose.onNodeWithText(str(R.string.save)).performScrollTo().performClick()
         compose.awaitText(str(R.string.settings_saved))
 
         back()
@@ -147,7 +152,7 @@ class SettingsScreenInstrumentedTest {
         openSettings()
 
         compose.onNodeWithText(str(R.string.api_key_hint)).performTextReplacement("  sk-padded  ")
-        compose.onNodeWithText(str(R.string.save)).performClick()
+        compose.onNodeWithText(str(R.string.save)).performScrollTo().performClick()
         compose.awaitText(str(R.string.settings_saved))
 
         assertEquals("sk-padded", TestEnv.settings().apiKey)
@@ -158,8 +163,8 @@ class SettingsScreenInstrumentedTest {
         TestEnv.app.settingsStore.update(sessionMinutes = 13)
         openSettings()
 
-        compose.onNodeWithText(str(R.string.session_minutes)).assertIsDisplayed()
-        compose.onNodeWithText("13 min").assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.session_minutes)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("13 min").performScrollTo().assertIsDisplayed()
         assertTrue(TestEnv.settings().sessionMinutes == 13)
     }
 }

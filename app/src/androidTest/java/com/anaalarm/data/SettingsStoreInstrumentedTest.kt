@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -129,6 +130,18 @@ class SettingsStoreInstrumentedTest {
         val settings = second.settings.first()
         assertEquals("sk-shared", settings.apiKey)
         assertEquals(7, settings.sessionMinutes)
+    }
+
+    @Test
+    fun apiKeyPlaintextIsAbsentFromTheDataStoreFile() = runBlocking {
+        val secret = "sk-must-not-appear-on-disk"
+        store.update(apiKey = secret)
+
+        val dataStoreFile = TestEnv.context.filesDir
+            .resolve("datastore/anaalarm_settings.preferences_pb")
+        assertTrue(dataStoreFile.exists())
+        val raw = dataStoreFile.readBytes().toString(Charsets.ISO_8859_1)
+        assertFalse(raw.contains(secret))
     }
 
     @Test

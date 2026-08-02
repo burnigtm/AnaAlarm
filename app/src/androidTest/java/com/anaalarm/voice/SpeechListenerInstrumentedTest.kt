@@ -9,7 +9,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeFalse
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
@@ -52,7 +51,11 @@ class SpeechListenerInstrumentedTest {
 
     @Test
     fun startingWithoutARecognizerReportsAClientError() {
-        assumeFalse("device has a recognizer", listener.isAvailable)
+        listener.destroy()
+        listener = SpeechListener(
+            context = TestEnv.context,
+            recognizerAvailabilityOverride = { false }
+        )
         val error = CountDownLatch(1)
         var code: Int? = null
         listener.onError = { received ->
@@ -104,7 +107,9 @@ class SpeechListenerInstrumentedTest {
             SpeechRecognizer.ERROR_NO_MATCH to "ERROR_NO_MATCH",
             SpeechRecognizer.ERROR_RECOGNIZER_BUSY to "ERROR_RECOGNIZER_BUSY",
             SpeechRecognizer.ERROR_SERVER to "ERROR_SERVER",
-            SpeechRecognizer.ERROR_SPEECH_TIMEOUT to "ERROR_SPEECH_TIMEOUT"
+            SpeechRecognizer.ERROR_SPEECH_TIMEOUT to "ERROR_SPEECH_TIMEOUT",
+            12 to "ERROR_LANGUAGE_NOT_SUPPORTED",
+            13 to "ERROR_LANGUAGE_UNAVAILABLE"
         )
 
         expected.forEach { (code, name) ->

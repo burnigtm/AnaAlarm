@@ -5,7 +5,8 @@ import java.time.LocalDateTime
 
 /**
  * Pure next-fire-time calculation for alarms.
- * [days] bitmask: bit 0 = Sunday … bit 6 = Saturday. Zero means every day (one-shot re-arms daily).
+ * [days] bitmask: bit 0 = Sunday … bit 6 = Saturday. Zero means a one-shot; this calculator
+ * still finds its initial future trigger, while [AlarmScheduler.handleFiredAlarm] disables it.
  */
 object AlarmTriggerCalculator {
 

@@ -48,7 +48,9 @@ Free up space on the device, or use `adb install -r -d` (allow downgrade) if it'
    Should report `allow`.
 2. **Notification permission denied (Android 13+).** The full-screen intent only fires through a notification. Re-grant in app settings.
 3. **Battery optimizations / OEM killers.** Some manufacturers (Xiaomi, Huawei, Samsung) aggressively kill background apps. Add AnaAlarm to the device's "no restrictions" / autostart whitelist.
-4. **Alarm doesn't repeat as expected.** Alarms with no repeat days still re-arm for the next day after firing (see README limitations) — disable the alarm to stop it. Repeating alarms follow the selected day bits.
+4. **Alarm doesn't repeat as expected.** An alarm with no repeat days is one-shot and becomes
+   disabled after delivery. Repeating alarms follow the selected day bits. Snooze is a separate
+   one-off exact alarm and does not change the repeat schedule.
 5. **Verify it's scheduled:**
    ```powershell
    adb shell dumpsys alarm | Select-String -Pattern anaalarm
@@ -65,7 +67,7 @@ Free up space on the device, or use `adb install -r -d` (allow downgrade) if it'
 |---|---|---|
 | "Set your DeepSeek API key…" | No key in Settings | Add your key from platform.deepseek.com |
 | "Could not reach the AI…" | Network, wrong key, rate limit | Check connection; verify key validity and quota at platform.deepseek.com; try again |
-| Stuck on "Thinking…" | API timeout (90s read timeout) | Check network quality; the request retries once automatically |
+| Stuck on "Thinking…" | Slow network/model | The whole logical call ends after 20 seconds. Check connectivity and retry; only a quick transport disconnect is retried once |
 
 ### Verify the API key manually
 ```powershell
@@ -95,7 +97,8 @@ If this returns `401`, the key is invalid; `429` means rate-limited.
 
 - The AI only sees the **last 20 messages** of the current session plus the **most recent previous daily log**.
 - A session must end through one of the exit paths for the daily log to be saved (Stop button, stop phrase, time cap, or error path — all call `ConversationEngine.endSession()`).
-- If the app is force-killed mid-session, the log isn't written (messages persist, but the daily summary won't exist).
+- If the app process is killed before finalization, the bounded daily log may not be written. Raw rows
+  are retained for recovery but startup-pruned after seven days.
 - Check the database:
   ```powershell
   adb shell run-as com.anaalarm ls databases/
@@ -109,10 +112,13 @@ If this returns `401`, the key is invalid; `429` means rate-limited.
 ## Misc
 
 ### App is slow to open on first launch after install
-First launch initializes Room + DataStore + the TTS engine (TTS initialization is lazy but happens on `AnaAlarmApp.onCreate`). Subsequent launches are fast.
+First launch initializes Room, DataStore, and TTS. During an alarm session, TTS readiness and the
+first model request run concurrently; local sound/vibration starts before either finishes.
 
 ### Battery drain
 The wake-up session keeps the screen on by design. Outside sessions, the app has no background work except alarms (exact alarms are wake-up alarms by definition).
 
-### Crash on wake-up screen with `SecurityException` from SpeechRecognizer
-Occurs when the mic permission was revoked after the session started. Re-grant the permission. Future-proof: the fallback text input takes over when `voiceAvailable` is false at session start.
+### Speech recognition switches to text unexpectedly
+Re-check microphone permission and the installed recognition service. Permission, audio, network,
+server, and unsupported-language failures switch promptly to typed input instead of leaving the
+session listening forever.

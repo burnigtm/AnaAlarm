@@ -6,6 +6,7 @@ import com.anaalarm.support.TestEnv
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
@@ -102,6 +103,18 @@ class TtsManagerInstrumentedTest {
         tts.shutdown()
         tts.shutdown()
         tts.stop()
+    }
+
+    @Test
+    fun shutdownMovesTheManagerToATerminalState() {
+        tts.shutdown()
+
+        assertTrue(
+            TestEnv.waitUntil(timeoutMs = 5_000) {
+                tts.currentState == TtsState.SHUTDOWN
+            }
+        )
+        assertFalse(runBlocking { tts.awaitReady(100) })
     }
 
     @Test
