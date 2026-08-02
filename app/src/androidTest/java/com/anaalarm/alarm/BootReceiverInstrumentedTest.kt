@@ -75,9 +75,11 @@ class BootReceiverInstrumentedTest {
     }
 
     @Test
-    fun timeZoneChangeReArmsStoredAlarms() {
+    fun directTimeZoneChangeInvocationWithoutFrameworkPendingResultReArmsStoredAlarms() {
         val expected = storeEnabledAlarm(minutesFromNow = 9)
 
+        // A direct onReceive call has no framework-installed PendingResult. This intentionally
+        // covers the nullable goAsync() path while still waiting for the asynchronous work.
         receiver.onReceive(TestEnv.context, Intent(Intent.ACTION_TIMEZONE_CHANGED))
 
         assertTrue(

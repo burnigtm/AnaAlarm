@@ -34,7 +34,10 @@ class BootReceiver : BroadcastReceiver() {
             } catch (error: Exception) {
                 Log.e(TAG, "Could not reschedule alarms after ${intent.action}", error)
             } finally {
-                pending.finish()
+                // Framework-delivered broadcasts always install a PendingResult before
+                // onReceive. Direct invocations (instrumentation, previews, or other in-process
+                // callers) do not, so goAsync() legitimately returns null for those calls.
+                pending?.finish()
             }
         }
     }
