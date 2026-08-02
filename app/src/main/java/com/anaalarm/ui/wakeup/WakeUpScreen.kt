@@ -78,7 +78,9 @@ fun WakeUpScreen(controller: SessionController) {
                     bottom = actionAreaBottomPadding
                 ),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+            // Keep state and error feedback in the initial viewport. SpaceBetween pushed the
+            // second column below the pinned action panel on real API 26/36 emulator layouts.
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(24.dp))

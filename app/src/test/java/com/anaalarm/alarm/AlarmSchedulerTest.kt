@@ -31,7 +31,11 @@ class AlarmSchedulerTest {
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         alarmManager = mockk(relaxed = true)
-        scheduler = AlarmScheduler(context, alarmManager)
+        scheduler = AlarmScheduler(
+            context = context,
+            alarmManager = alarmManager,
+            directBootPreferencesName = TEST_DIRECT_BOOT_PREFERENCES
+        )
         scheduler.clearDirectBootStoreForTest()
     }
 
@@ -181,5 +185,9 @@ class AlarmSchedulerTest {
         assertTrue(result is FiredAlarmResult.RepeatingRearmed)
         assertTrue(scheduler.directBootSnapshot(72)!!.enabledForRearm)
         verify(exactly = 2) { alarmManager.setAlarmClock(any(), any()) }
+    }
+
+    private companion object {
+        const val TEST_DIRECT_BOOT_PREFERENCES = "alarm_scheduler_test"
     }
 }

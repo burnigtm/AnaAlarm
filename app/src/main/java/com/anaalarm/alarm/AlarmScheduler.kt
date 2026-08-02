@@ -46,10 +46,11 @@ sealed interface FiredAlarmResult {
 class AlarmScheduler(
     private val context: Context,
     private val alarmManager: AlarmManager =
-        context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        context.getSystemService(Context.ALARM_SERVICE) as AlarmManager,
+    directBootPreferencesName: String = DirectBootAlarmStore.PREFERENCES_NAME
 ) {
 
-    private val directBootStore = DirectBootAlarmStore(context)
+    private val directBootStore = DirectBootAlarmStore(context, directBootPreferencesName)
 
     fun canScheduleExact(): Boolean =
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
