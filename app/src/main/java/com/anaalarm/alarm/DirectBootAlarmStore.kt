@@ -29,11 +29,14 @@ internal data class DirectBootAlarm(
     }
 }
 
-internal class DirectBootAlarmStore(context: Context) {
+internal class DirectBootAlarmStore(
+    context: Context,
+    preferencesName: String = PREFERENCES_NAME
+) {
 
     private val preferences: SharedPreferences = context
         .createDeviceProtectedStorageContext()
-        .getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+        .getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
 
     fun get(alarmId: Long): DirectBootAlarm? = synchronized(preferences) {
         val storageKey = key(alarmId)

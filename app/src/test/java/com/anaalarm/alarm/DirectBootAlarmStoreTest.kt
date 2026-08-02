@@ -23,7 +23,10 @@ class DirectBootAlarmStoreTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        store = DirectBootAlarmStore(context)
+        // AnaAlarmApp reconciles the production mirror asynchronously during Robolectric startup.
+        // A dedicated file keeps this storage unit test deterministic without bypassing the
+        // device-protected SharedPreferences path used in production.
+        store = DirectBootAlarmStore(context, TEST_PREFERENCES_NAME)
         store.clearForTest()
     }
 
@@ -76,7 +79,7 @@ class DirectBootAlarmStoreTest {
     @Test
     fun `corrupt persisted entries are dropped durably`() {
         val preferences = context.createDeviceProtectedStorageContext().getSharedPreferences(
-            DirectBootAlarmStore.PREFERENCES_NAME,
+            TEST_PREFERENCES_NAME,
             Context.MODE_PRIVATE
         )
         preferences.edit()
@@ -89,5 +92,9 @@ class DirectBootAlarmStoreTest {
         assertFalse(preferences.contains("alarm.80"))
         assertFalse(preferences.contains("alarm.81"))
         assertFalse(preferences.contains("alarm.83"))
+    }
+
+    private companion object {
+        const val TEST_PREFERENCES_NAME = "direct_boot_alarms_store_test"
     }
 }
