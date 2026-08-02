@@ -1,0 +1,4 @@
+<resources>
+    <style name="Theme.AnaAlarm" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.AnaAlarm.WakeUp" parent="android:Theme.Material.NoActionBar.Fullscreen" />
+</resources>

@@ -1,0 +1,73 @@
+<resources>
+    <string name="app_name">AnaAlarm</string>
+
+    <string name="home_title">Good morning companion</string>
+    <string name="next_alarm">Next alarm</string>
+    <string name="no_alarm">No alarm set — add one below</string>
+    <string name="alarms">Alarms</string>
+    <string name="add_alarm">Add alarm</string>
+    <string name="edit_alarm">Edit alarm</string>
+    <string name="new_alarm">New alarm</string>
+    <string name="time_label">Time</string>
+    <string name="repeat_days">Repeat</string>
+    <string name="snooze_label">Snooze (minutes)</string>
+    <string name="alarm_scheduled_today">Alarm set for today at %1$s</string>
+    <string name="alarm_scheduled_tomorrow">Alarm set for tomorrow at %1$s</string>
+    <string name="alarm_scheduled_day">Alarm set for %1$s at %2$s</string>
+    <string name="enabled_label">Enabled</string>
+    <string name="delete">Delete</string>
+    <string name="save">Save</string>
+    <string name="cancel">Cancel</string>
+    <string name="settings">Settings</string>
+    <string name="back">Back</string>
+
+    <string name="test_session">Test wake-up session</string>
+    <string name="test_session_desc">Runs the morning AI conversation right now</string>
+
+    <string name="perm_alarm_denied">Exact alarm permission is needed to wake you on time. Please grant it.</string>
+    <string name="perm_fullscreen_denied">Full-screen alarm permission is needed so Ana can appear over other apps when the alarm rings — not just as a notification.</string>
+    <string name="grant_permission">Grant permission</string>
+
+    <string name="api_key">DeepSeek API key</string>
+    <string name="api_key_hint">Paste your key from platform.deepseek.com</string>
+    <string name="api_key_missing">Please set your DeepSeek API key in Settings first.</string>
+    <string name="your_name">Your name</string>
+    <string name="language_label">Language</string>
+    <string name="language_en">English</string>
+    <string name="language_pt">Português</string>
+    <string name="habits_label">Habits to remind (comma separated)</string>
+    <string name="habits_hint">water the plants, make coffee</string>
+    <string name="interests_label">Your interests (comma separated)</string>
+    <string name="interests_hint">photography, soccer, books</string>
+    <string name="session_minutes">Wake-up session length (minutes)</string>
+    <string name="settings_saved">Settings saved</string>
+    <string name="saved">Saved</string>
+
+    <string name="day_sun">Sun</string>
+    <string name="day_mon">Mon</string>
+    <string name="day_tue">Tue</string>
+    <string name="day_wed">Wed</string>
+    <string name="day_thu">Thu</string>
+    <string name="day_fri">Fri</string>
+    <string name="day_sat">Sat</string>
+
+    <string name="wake_up_title">Good morning!</string>
+    <string name="status_listening">Listening…</string>
+    <string name="status_speaking">Speaking…</string>
+    <string name="status_thinking">Thinking…</string>
+    <string name="status_starting">Starting…</string>
+    <string name="status_ended">Session over. Time to get up!</string>
+    <string name="stop">Stop</string>
+    <string name="you_said">You said</string>
+    <string name="did_not_catch">Sorry, I did not catch that. Please try again.</string>
+    <string name="mic_error">I could not hear you. Please tap Stop or check the microphone.</string>
+    <string name="ai_error">I could not reach the AI. Please check your API key and internet connection.</string>
+    <string name="invalid_api_key">DeepSeek rejected the API key. Open Settings and paste a valid key from platform.deepseek.com.</string>
+    <string name="ssl_error">Secure connection failed. If you use antivirus HTTPS scanning (for example Avast), turn it off for the emulator or install its certificate on the device.</string>
+    <string name="network_error">Network error talking to DeepSeek. Check that the emulator/device has internet access.</string>
+    <string name="type_fallback_hint">Type your answer here (voice is unavailable)…</string>
+    <string name="type_fallback_switch">I cannot hear you. Use the text box to answer.</string>
+    <string name="type_instead">Type instead</string>
+    <string name="send">Send</string>
+    <string name="no_api_key">No API key configured. Open AnaAlarm settings and add your DeepSeek API key.</string>
+</resources>
