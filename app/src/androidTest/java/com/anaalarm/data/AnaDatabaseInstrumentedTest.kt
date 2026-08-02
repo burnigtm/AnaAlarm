@@ -137,6 +137,19 @@ class AnaDatabaseInstrumentedTest {
     }
 
     @Test
+    fun deleteOlderThanKeepsTheCutoffAndNewerMessages() = runBlocking {
+        messages.insert(MessageEntity(sessionId = 1, role = "user", content = "old", timestamp = 9))
+        messages.insert(MessageEntity(sessionId = 1, role = "user", content = "cutoff", timestamp = 10))
+        messages.insert(MessageEntity(sessionId = 1, role = "user", content = "new", timestamp = 11))
+
+        assertEquals(1, messages.deleteOlderThan(10))
+        assertEquals(
+            listOf("cutoff", "new"),
+            messages.getSessionMessages(1).map { it.content }
+        )
+    }
+
+    @Test
     fun dailyLogDateIsUniqueAndUpsertReplaces() = runBlocking {
         logs.upsert(DailyLogEntity(date = "2026-01-01", summary = "first"))
         val firstId = logs.getByDate("2026-01-01")!!.id

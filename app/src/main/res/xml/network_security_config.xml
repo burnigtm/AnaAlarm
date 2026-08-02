@@ -1,11 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Trust user CAs so local HTTPS scanners / proxies (Avast, Charles, etc.) can work
-         once their root is installed on the device. System CAs remain trusted. -->
+    <!-- Production API keys and conversations must only traverse the platform trust store. -->
     <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
-            <certificates src="user" />
         </trust-anchors>
     </base-config>
 </network-security-config>

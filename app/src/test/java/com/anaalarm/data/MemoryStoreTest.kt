@@ -84,6 +84,39 @@ class MemoryStoreTest {
     }
 
     @Test
+    fun `clear session removes raw transcript but leaves other sessions`() = runTest {
+        memory.addMessage(41L, "user", "private morning detail")
+        memory.addMessage(42L, "user", "keep until its session ends")
+
+        memory.clearSession(41L)
+
+        assertTrue(memory.getSessionHistory(41L).isEmpty())
+        assertEquals(
+            listOf(ChatMessage("user", "keep until its session ends")),
+            memory.getSessionHistory(42L)
+        )
+    }
+
+    @Test
+    fun `prune removes only raw messages older than cutoff`() = runTest {
+        val dao = db.messageDao()
+        dao.insert(MessageEntity(sessionId = 1L, role = "user", content = "old", timestamp = 10L))
+        dao.insert(MessageEntity(sessionId = 2L, role = "user", content = "new", timestamp = 30L))
+
+        assertEquals(1, memory.pruneMessagesOlderThan(20L))
+        assertTrue(memory.getSessionHistory(1L).isEmpty())
+        assertEquals(listOf("new"), memory.getSessionHistory(2L).map { it.content })
+    }
+
+    @Test
+    fun `rapid session allocation remains unique and monotonic`() = runTest {
+        val ids = List(100) { memory.beginSession() }
+
+        assertEquals(ids.size, ids.toSet().size)
+        assertEquals(ids.sorted(), ids)
+    }
+
+    @Test
     fun `daily log upsert replaces same date instead of duplicating`() = runTest {
         val day = LocalDate.of(2026, 8, 1)
         memory.saveDailyLog("first summary", day)
@@ -95,6 +128,19 @@ class MemoryStoreTest {
         // Unique date index: still a single row for that day.
         memory.saveDailyLog("third", day)
         assertEquals("third", db.dailyLogDao().getByDate(day.toString())?.summary)
+    }
+
+    @Test
+    fun `append daily log preserves multiple sessions on the same date`() = runTest {
+        val day = LocalDate.of(2026, 8, 1)
+        memory.appendDailyLog("first session", day)
+        memory.appendDailyLog("second session", day)
+        memory.appendDailyLog("   ", day)
+
+        assertEquals(
+            "first session\nsecond session",
+            db.dailyLogDao().getByDate(day.toString())?.summary
+        )
     }
 
     @Test

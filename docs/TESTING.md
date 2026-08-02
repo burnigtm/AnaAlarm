@@ -5,9 +5,9 @@ real phone can confirm.
 
 | Suite | Location | Size | Runtime | Needs a device? |
 |---|---|---|---|---|
-| JVM unit tests | `app/src/test` | 46 tests / 12 classes | ~15 s | No |
-| Instrumented tests | `app/src/androidTest` | 145 tests / 19 classes | ~3 min | Yes |
-| Manual checklist | this document, §5 | 60+ checks | ~30 min | Yes, ideally overnight |
+| JVM unit tests | `app/src/test` | See the generated Gradle report | ~20 s | No |
+| Instrumented tests | `app/src/androidTest` | See the device verdict | ~3 min per API | Yes |
+| Manual checklist | this document, §5 | Roughly 50 checks | ~30 min | Yes, ideally overnight |
 
 Neither automated suite needs a DeepSeek API key or internet access.
 
@@ -37,10 +37,11 @@ The script:
 
 1. Builds and installs `app-debug.apk` and `app-debug-androidTest.apk`.
 2. Grants `POST_NOTIFICATIONS` and `RECORD_AUDIO`, and allows the `SCHEDULE_EXACT_ALARM` and
-   `USE_FULL_SCREEN_INTENT` app-ops.
+   `USE_FULL_SCREEN_INTENT` app-ops. CI reads required app-ops back and fails before tests unless
+   the applicable API reports `allow`.
 3. Sets all three animation scales to 0 and dismisses the keyguard.
 4. Runs the suite via `adb shell am instrument`.
-5. Prints `SUCCESS: OK (145 tests)` or the failing stack traces.
+5. Prints the device-reported `OK (<count> tests)` verdict or the failing stack traces.
 
 Options:
 
@@ -52,12 +53,37 @@ Options:
 
 Raw output is kept in `adb-instrument.log`.
 
-> **Why not `./gradlew connectedAndroidTest`?** AGP's Unified Test Platform reports results over
-> gRPC+TLS, which local antivirus HTTPS interception breaks with *"Failed to receive the UTP test
-> results"* — the tests pass on the device but the build still fails. `gradle.properties` sets
-> `android.experimental.androidTest.useUnifiedTestPlatform=false`, and the script drives
-> `am instrument` directly. If your machine has no TLS interception, `connectedAndroidTest`
-> works too.
+> The script uses `am instrument` directly for predictable device output. `connectedAndroidTest`
+> remains available when the host/device test transport is reliable.
+
+Linux and CI use the equivalent helper (the API argument enables capability-aware grants):
+
+```bash
+bash scripts/ci/run-instrumented-tests.sh 36
+```
+
+GitHub Actions is configured with two gates. Host checks run unit tests, compile Android tests,
+build debug and minified release APKs, and lint both variants. The device matrix is configured to
+boot API 26 and API 36 emulators and execute the complete instrumented suite on each. API 36 also
+creates a one-day, CI-only signing key, signs the minified release APK, verifies its signature,
+installs it, and launches `MainActivity`. The key and signed APK are deleted when the smoke step
+exits. A successful workflow run—not this configuration alone—is the execution evidence.
+
+Before the aggregate device suite, CI runs the alarm scheduler, boot receiver, notification, and
+end-to-end firing classes as a required group. That group must report exactly 34 tests and exactly
+zero skips on both API 26 and API 36. Unexpected assumptions/ignores, a missing exact-alarm grant,
+a missing full-screen grant, or a zero-test runner invocation therefore fails even if the later
+aggregate suite would print `OK`. The locked-boot cases cancel only their regular PendingIntent,
+preserving the device-protected mirror and exercising the real API-26+ recovery path.
+
+```text
+host: test + compile androidTest → debug/release build → debug/release lint
+device: API 26 instrumented suite
+        API 36 instrumented suite → ephemeral signed release install/launch
+```
+
+Every CI dependency resolution uses strict checksum verification and dependency locks. See
+[`SUPPLY_CHAIN.md`](SUPPLY_CHAIN.md) before updating Gradle dependencies or workflow actions.
 
 ---
 
@@ -72,14 +98,16 @@ Real conversations are exercised over the real Retrofit/OkHttp/serialization sta
 - `AnaAlarmApp.overrideAiBackend(client)` swaps the app's `DeepSeekClient` and
   `ConversationEngine` at runtime, so even `WakeUpActivity` talks to the fake.
 - `app/src/debug/res/xml/network_security_config.xml` permits cleartext to `127.0.0.1` and
-  `localhost` for the debug build only. The release policy is unchanged: no cleartext, system +
-  user trust anchors.
+  `localhost` for the debug build only. Release permits no cleartext and trusts system CAs only.
 - The server binds to an explicit IPv4 loopback address. Where `localhost` resolves to `::1`
   first, OkHttp burns a full connect timeout before falling back, turning fast tests into
   minute-long hangs.
 
 Voice is not faked. TTS and speech recognition run against whatever the device provides, and the
 tests use JUnit assumptions to skip (not fail) when a device has no engine.
+CI deliberately uses the official `google_apis` API 26 and API 36 images, both of which are present
+in Google's system-image repository, to maximize real TTS/SpeechRecognizer execution instead of
+skips while keeping hardware-availability assumptions honest.
 
 ---
 
@@ -90,31 +118,34 @@ tests use JUnit assumptions to skip (not fail) when a device has no engine.
 | Class | Covers |
 |---|---|
 | `AnaAlarmAppInstrumentedTest` | Every DI singleton is constructed; the application scope is alive; both notification channels exist after startup and the legacy channel is gone; `recreateTts` / `recreateSpeech` swap instances; the AI backend override is reversible |
-| `ManifestInstrumentedTest` | All ten permissions are declared; `MainActivity` is the launcher; `WakeUpActivity` is unexported, single-task, portrait, excluded from recents and has an empty task affinity; `AlarmService` is a `specialUse` foreground service; both receivers are registered; `FIRE_ALARM` resolves; application class, `minSdk` 26 and `targetSdk` 35 |
+| `ManifestInstrumentedTest` | Required permissions and optional microphone hardware; launcher and private lock-screen activity; `systemExempted` alarm-continuation service; registered receivers; debug-only manual-fire action; application class, `minSdk` 26 and `targetSdk` 36 |
 
 ### Data layer
 
 | Class | Covers |
 |---|---|
-| `data/AnaDatabaseInstrumentedTest` | Every DAO query against real SQLite: alarm ordering, conflict-replace upsert, enabled filtering, delete isolation, derived `timeMinutes`; message ordering, newest-first limit, per-session scoping and clearing; daily-log date uniqueness, `getByDate`, `getLatestBefore`; `clearAllTables` |
-| `data/MemoryStoreInstrumentedTest` | Repository behaviour on the app's real database: alarm round-trip and in-place update, enable/disable, delete (including unknown ids), sorted flow, chronological history with limit and session scoping, today/yesterday summaries including the blank-log and most-recent-earlier-day rules |
-| `data/SettingsStoreInstrumentedTest` | DataStore persistence: factory defaults, full round-trip, partial updates, BOM/whitespace stripping on pasted keys, name trimming, blank-entry filtering in lists, comma-separated UI input, flow emission, durability across store instances, `SettingsLists` format |
+| `data/AnaDatabaseInstrumentedTest` | Every DAO query against real SQLite, including raw-message cutoff deletion and session scoping |
+| `data/AnaDatabaseRetentionInstrumentedTest` | Reopening a real Room database invokes the production `onOpen` callback, removes expired messages, and preserves the exact cutoff and newer rows |
+| `data/AnaDatabaseMigrationInstrumentedTest` | `MigrationTestHelper` creates the actual exported v2 schema, validates v2→current, preserves all three entity types, and verifies both history/retention indexes |
+| `data/MemoryStoreInstrumentedTest` | Repository behaviour on the app's real database: alarm round-trip and in-place update, enable/disable, delete (including unknown ids), sorted flow, chronological history with limit and session scoping, bounded daily logs, and most-recent-earlier-day lookup |
+| `data/SettingsStoreInstrumentedTest`, `data/SettingsStoreRecoveryInstrumentedTest` | Encrypted-key DataStore round-trip plus settings defaults, partial updates, sanitizing, lists, durability, legacy-plaintext migration, corrupt ciphertext fail-closed behavior, and invalidated-key reset/retry |
+| `data/KeystoreSecretCipherInstrumentedTest` | Keystore AES-GCM ciphertext does not embed plaintext, round-trips, rejects malformed payloads, and proves old ciphertext fails closed after key loss while a replacement key works |
 
 ### Alarm subsystem
 
 | Class | Covers |
 |---|---|
-| `alarm/AlarmSchedulerInstrumentedTest` | Scheduling verified through the system's `nextAlarmClock` record — the thing that actually wakes the device: schedule registers, cancel removes, a disabled alarm cancels instead, `rescheduleAll` and `rescheduleNext` re-arm from the database (and tolerate unknown ids), plus next-fire-time and bitmask rules |
-| `alarm/NotificationsInstrumentedTest` | Channel creation is idempotent; the alarm channel is high-importance with an alarm-usage ringtone and vibration; the session channel is silent and low; DND bypass and lock-screen visibility are requested and honoured wherever the system permits; the legacy channel is deleted; both notification payloads carry the right channel, category, ongoing flag and full-screen intent; `wakeUpIntent` flags and extras |
-| `alarm/BootReceiverInstrumentedTest` | `BOOT_COMPLETED` and `MY_PACKAGE_REPLACED` re-arm stored alarms; unrelated broadcasts and disabled alarms do not |
-| `alarm/AlarmFiringInstrumentedTest` | The full path with UI Automator: broadcast → receiver → foreground service → wake-up screen over the lock screen, with the alarm re-armed for its next occurrence; the Stop button closes a session started by an alarm |
+| `alarm/AlarmSchedulerInstrumentedTest` | Fail-closed exact-alarm capability plus system `nextAlarmClock` registration/cancellation, typed outcomes, database reconciliation, exact snooze duration and trigger rules |
+| `alarm/NotificationsInstrumentedTest` | Fail-closed full-screen capability; channel creation is idempotent; the alarm channel is high-importance with an alarm-usage ringtone and vibration; the session channel is silent and low; DND bypass and lock-screen visibility are requested and honoured wherever the system permits; the legacy channel is deleted; both notification payloads carry the right channel, category, ongoing flag and full-screen intent; `wakeUpIntent` flags and extras |
+| `alarm/BootReceiverInstrumentedTest` | Fail-closed exact-alarm capability; boot/package/time/time-zone/permission actions reconcile stored alarms; unrelated broadcasts and disabled alarms do not |
+| `alarm/AlarmFiringInstrumentedTest` | Fail-closed exact-alarm/UI assertions across foreground app + debug broadcast → receiver → foreground service → wake UI; one-shot disable/repeat re-arm; AI failure keeps the service active until Stop/Snooze |
 
 ### AI layer
 
 | Class | Covers |
 |---|---|
-| `ai/DeepSeekClientInstrumentedTest` | No request is made without a key; both response shapes parse; the request carries the bearer token, model, instructions, token cap and turn list; 401/403 map to "invalid api key", other statuses keep their code, in-body errors surface their message, empty replies fail; a dropped connection is retried; an unreachable server reports a network error; keys are masked in logs |
-| `ai/ConversationEngineInstrumentedTest` | Greeting and session state; instructions carry persona, name, language directive, habits, interests, session length, formatted date and yesterday's log; Portuguese switches the directive; `respond` before `startSession` is rejected; history accumulates correctly across turns; `wrapUp` sends the farewell prompt; `endSession` writes the day log and resets, and is a no-op without a session; re-entering a live session does not rebuild the prompt; backend errors propagate mapped |
+| `ai/DeepSeekClientInstrumentedTest` | Auth/request contract including reasoning-off and 96-token cap; response shapes/errors; bounded transport behavior and redacted key reporting |
+| `ai/ConversationEngineInstrumentedTest` | Prompt/session/history contract, stable greeting prefix, wrap-up, durable daily log and raw-session clearing |
 
 ### UI
 
@@ -124,15 +155,15 @@ tests use JUnit assumptions to skip (not fail) when a device has no engine.
 | `ui/AlarmEditScreenInstrumentedTest` | Saving a new alarm persists it and returns home; cancel discards; repeat chips map to the Sunday-first bitmask; editing updates the same row rather than inserting; stored snooze is preserved; editing a disabled alarm does not silently enable it; the saved alarm appears on the home list |
 | `ui/SettingsScreenInstrumentedTest` | Defaults on a fresh install; saving writes every field to DataStore; values are pre-filled on reopen; the language choice is remembered; leaving without saving discards; the API key is sanitised; the session-length section reflects stored state |
 | `ui/LocalizationInstrumentedTest` | Every string resolves non-blank in `en` and `pt-BR`; every user-facing string is actually translated (with an explicit shared-by-design allowlist); format placeholders survive translation; key wording; error messages name the recovery action |
-| `ui/wakeup/WakeUpSessionInstrumentedTest` | The screen renders clock and Stop immediately; no API key produces the localized hint and an ended session; Ana greets and answers a reply end to end; a stop phrase triggers the wrap-up request; the Stop button finishes the activity and writes the day log; a backend failure is displayed instead of crashing; yesterday's log is fed back into the morning prompt |
+| `ui/wakeup/WakeUpSessionInstrumentedTest` | Clock/Stop, Snooze only for real alarm ids, overlapping-alarm replacement, controller retention across recreation, no-key/backend failures, full fake-AI turns, stop/wrap-up persistence and prior-day context |
 | `ui/wakeup/SessionPhrasesInstrumentedTest` | English and Portuguese stop phrases, ordinary conversation that must not end the session, case/padding insensitivity, and self-consistency of the configured list |
 
 ### Voice
 
 | Class | Covers |
 |---|---|
-| `voice/TtsManagerInstrumentedTest` | Blank text completes immediately; the engine reports readiness; **speaking always calls back** (the watchdog guarantee that stops a session hanging); utterances queued before initialisation are flushed; language/pitch/rate values are clamped and accepted for both languages; stop and shutdown are idempotent; the engine still speaks after being stopped |
-| `voice/SpeechListenerInstrumentedTest` | A fresh listener is idle; availability is reported without throwing; a missing recognizer produces `ERROR_CLIENT` rather than a crash; start/stop returns cleanly to idle where a recognizer exists; stop and destroy are safe before anything starts; every error code has a readable name; the app can recreate the listener |
+| `voice/TtsManagerInstrumentedTest` | Bounded readiness, queued speech completion, clamped configuration and idempotent stop/shutdown; the pure registry suite covers callback identity/order |
+| `voice/SpeechListenerInstrumentedTest` | Availability, lifecycle, error naming, safe start/stop/destroy and recreation; pure generation tests cover stale callback rejection |
 
 ---
 
@@ -141,20 +172,31 @@ tests use JUnit assumptions to skip (not fail) when a device has no engine.
 | Class | Covers |
 |---|---|
 | `alarm/AlarmTriggerCalculatorTest` | Next-trigger arithmetic across all repeat-day combinations and day rollovers |
+| `alarm/AlarmSchedulerTest`, `alarm/AlarmReceiverTest` | Permission-denied scheduling remains explicitly covered alongside typed failures, private release action, distinct snooze PendingIntent, cancellation scope and post-fire routing |
+| `alarm/DirectBootAlarmStoreTest`, `alarm/BootReceiverTest` | Device-protected snapshot validation/tombstones and locked/unlocked broadcast routing |
+| `alarm/PlaybackPreparationGateTest` | Stop/restart and reverse-completion races reject stale ringtone players and release replacements before ownership changes |
 | `ai/PromptBuilderTest` | System-prompt composition from profile and context |
 | `ai/ResponseTextExtractorTest` | Both Responses API payload shapes and the null/blank cases |
 | `ai/ApiErrorMapperTest` | Throwable → `ApiException` mapping, including nested certificate-trust failures |
 | `ai/DeepSeekClientTest` | Request/response contract over MockWebServer on the JVM |
 | `ai/ConversationEngineTest` | Session orchestration with a mocked client |
 | `data/MemoryStoreTest` | Repository logic with fakes |
+| `data/AnaDatabaseMigrationTest` | Host-side real SQLite 1→4 preservation and current-index validation |
 | `data/SettingsListsTest`, `data/SettingsStoreSanitizeTest` | List join/split and secret sanitising |
 | `data/AlarmEntityTest` | Derived `timeMinutes` |
 | `ui/home/HomeViewModelTest` | Toggle/delete side effects on the scheduler and store |
 | `ui/wakeup/SessionPhrasesTest` | Stop-phrase matching |
+| `telemetry/LatencyMetricsTest`, `ai/DeepSeekClientTest` telemetry cases | Stable metric schema/sanitization, call-scoped capture, exactly-once alarm/TTS boundaries, and one model terminal event across success, retry, provider failure, deadline, and caller cancellation |
+| `voice/RecognitionGenerationTest`, `voice/TtsRequestGenerationTest`, `voice/UtteranceRegistryTest` | Stale/cancelled ASR and TTS request/callback rejection |
 
 ---
 
 ## 5. Manual QA checklist
+
+The automated alarm-firing test intentionally keeps the app foreground and uses the debug
+broadcast action; it does not lock/sleep a physical device or prove speaker audibility. The
+screen-off/locked, airplane-mode/no-key test below is therefore a release-blocking physical-device
+gate, not something the host-side suite claims to cover.
 
 Automation cannot confirm that a phone in your bedroom actually wakes you. Run this before a
 release, ideally spanning a real night.
@@ -168,20 +210,24 @@ release, ideally spanning a real night.
 - [ ] Microphone permission prompt appears.
 - [ ] Home shows "No alarm set" when the list is empty.
 - [ ] With exact-alarm permission missing, the warning card appears, **Grant permission** opens
-      the system screen, and the card disappears after granting (re-open the app).
+      the system screen, and the card disappears when the app resumes after granting.
 - [ ] On Android 14+, the full-screen-intent card behaves the same way.
 
 ### 5.2 Alarms
 - [ ] Add an alarm 1–2 minutes ahead → card shows the correct `HH:mm`.
 - [ ] Repeat days: select Mon/Wed → the card shows those day labels and only those days fire.
-- [ ] One-shot (no days): fires once, then re-arms for the next day (intended — use the switch
-      to stop it).
+- [ ] One-shot (no days): fires once and becomes disabled after delivery.
+- [ ] Snooze: tap the alarm-session action, confirm the current UI closes, and the distinct exact
+      alarm fires after the configured number of minutes.
 - [ ] Snooze slider persists across save → edit.
 - [ ] Toggle disables/enables; the disabled card is dimmed.
 - [ ] Delete shows a confirmation; the confirmed alarm disappears.
 - [ ] Edit pre-fills, and changing the time updates the card.
 - [ ] **Fire test:** screen off and locked → the wake-up screen appears over the lock screen.
-- [ ] **Reboot test:** set a repeating alarm → reboot → it still fires.
+- [ ] **Locked-boot repeating test:** set a repeating alarm → reboot without unlocking → it still
+      fires using only the device-protected mirror, then reconciles with Room after unlock.
+- [ ] **Locked-boot one-shot/Snooze test:** before first unlock, a one-shot fires only once while
+      repeated Snooze actions keep the configured interval; Stop prevents any later re-arm.
 - [ ] **Doze test:** set an alarm, leave the phone idle 30+ minutes → it still fires on time.
 
 ### 5.3 Settings
@@ -198,24 +244,28 @@ release, ideally spanning a real night.
 - [ ] Your transcript appears under "You said", then "Thinking…", then a 1–2 sentence reply.
 - [ ] She runs at least one quiz and gives the answer.
 - [ ] She asks about a configured habit.
-- [ ] She references yesterday's log (run a session, promise something, check the next one).
+- [ ] She references the most recent prior-day log (run a session, promise something, then check
+      a later session—even after skipping a day).
 - [ ] A stop phrase produces a short farewell and closes the screen.
 - [ ] The **Stop** button closes immediately.
 - [ ] With a 5-minute session length, she wraps up on her own around the 5-minute mark.
 
 ### 5.5 Wake-up session, edge cases
 - [ ] **Silence:** say nothing for two listen cycles → she asks you to repeat, then offers typing.
-- [ ] **No API key:** localized error, session ends gracefully.
-- [ ] **Airplane mode:** network error message, no crash.
+- [ ] **No API key:** localized error appears while local sound/vibration keeps running; Stop and
+      Snooze each silence it and complete their action.
+- [ ] **Airplane mode:** network error message, no crash, and local sound remains active until an
+      explicit Stop/Snooze.
 - [ ] **Mic revoked:** the text fallback appears and typing works end to end.
 - [ ] **Language mid-session:** replying in the other language does not derail her.
-- [ ] **Rotation:** the screen stays portrait; no restart mid-conversation.
+- [ ] **Rotation/fold:** on API 36 large-screen and foldable configurations, the same controller,
+      alarm id, and conversation remain active without a restart.
 - [ ] **Incoming call during a session:** audio focus is released and the app recovers.
 
 ### 5.6 Memory
 - [ ] Force-kill mid-session → no crash on next launch.
-- [ ] After a normal session, `daily_logs` contains today's summary.
-- [ ] Next morning, the prompt includes yesterday's context and she asks about it.
+- [ ] After a normal session, `daily_logs` contains today's bounded role-labelled transcript.
+- [ ] A later session includes the most recent prior-day context and follows up on it.
 
 ### 5.7 Localization
 - [ ] Full pt-BR review with the device language set to Portuguese: Home, editor, Settings,
@@ -240,7 +290,7 @@ adb shell dumpsys alarm | Select-String anaalarm            # scheduled alarms
 adb shell cmd appops get com.anaalarm SCHEDULE_EXACT_ALARM  # exact-alarm state
 adb shell cmd appops get com.anaalarm USE_FULL_SCREEN_INTENT
 adb shell run-as com.anaalarm ls databases/                 # verify the Room database
-adb shell am broadcast -a com.anaalarm.action.FIRE_ALARM `
+adb shell am broadcast -a com.anaalarm.action.DEBUG_FIRE_ALARM `
     -n com.anaalarm/.alarm.AlarmReceiver --el extra_alarm_id 1   # fire an alarm now (debug builds)
 adb shell pm clear com.anaalarm                             # factory-reset the app
 ```
@@ -268,5 +318,6 @@ Conventions worth keeping:
   earlier alarm hides a later one in `nextAlarmClock`. `TestEnv.clearDatabase()` handles both.
 - **Poll instead of sleeping.** `AlarmManager`, the application coroutine scope and DataStore all
   settle asynchronously.
-- **Use `Assume` for hardware you cannot guarantee** (a TTS engine, a speech recognizer, granted
-  app-ops) so a limited emulator skips rather than fails.
+- **Use `Assume` only for genuinely optional hardware or an inapplicable platform version** (for
+  example, a TTS engine or speech recognizer). Required alarm/full-screen app-ops must assert and
+  fail closed; permission-denied behavior belongs in deterministic scheduler unit tests.

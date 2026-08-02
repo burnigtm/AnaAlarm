@@ -38,8 +38,8 @@ AnaAlarm is a standalone Android alarm clock. You set alarms exactly like you wo
 other clock app — a time, some repeat days, a snooze length. The difference is what happens
 when the alarm goes off.
 
-Instead of a ringtone, a full-screen wake-up session opens over the lock screen and **Ana**, an
-AI companion powered by DeepSeek-V4-Flash, starts talking to you out loud:
+A local ringtone/vibration starts first, then a full-screen wake-up session opens over the lock
+screen and **Ana**, an AI companion powered by DeepSeek-V4-Flash, starts talking to you out loud:
 
 - She greets you by name and asks how you slept.
 - She runs quick quizzes and memory games so your brain has to actually switch on.
@@ -48,9 +48,10 @@ AI companion powered by DeepSeek-V4-Flash, starts talking to you out loud:
 - She follows up on what you said the previous morning ("You said you'd call your mom — did you?").
 - After a configurable 5–15 minutes she wraps up with an energetic "time to get up!".
 
-You answer by speaking. Your voice is transcribed on-device by Android speech recognition, sent
-to the model with the conversation history, and her reply is spoken back through text-to-speech.
-If the microphone is unavailable, the same conversation continues through a text box.
+You answer by speaking. Android speech recognition prefers an on-device engine where available,
+but its default fallback may use the device vendor's network service. The transcript is sent to
+the model with conversation history, and the reply is spoken through text-to-speech. If the
+microphone or recognizer is unavailable, the same conversation continues through a text box.
 
 Everything is fully localized in **English** and **Brazilian Portuguese** — the interface, the
 speech synthesis voice, the recognition language and the language Ana replies in.
@@ -58,12 +59,12 @@ speech synthesis voice, the recognition language and the language Ana replies in
 ## 2. Why it exists
 
 A ringtone trains you to develop a reflex: hear noise, hit snooze, stay asleep. A conversation
-does not work that way. Answering questions out loud, doing arithmetic and recalling what you
-promised yesterday requires you to actually be awake, and by the time the session ends you are.
+does not work that way. Answering questions out loud, doing arithmetic and recalling an earlier
+promise requires you to actually be awake, and by the time the session ends you are.
 
-The follow-up memory is the part that makes it feel personal rather than gimmicky. Each session
-is summarized into a daily log, and the next morning's system prompt includes it, so Ana carries
-a thread from one day to the next.
+The follow-up memory is the part that makes it feel personal rather than gimmicky. A bounded,
+role-labelled session transcript is appended to a daily log, and a later morning's system prompt
+includes the most recent prior-day log so Ana can carry a thread forward.
 
 ## 3. Feature tour
 
@@ -72,26 +73,26 @@ a thread from one day to the next.
 |---|---|
 | Exact alarms | Scheduled through `AlarmManager.setAlarmClock()`, the strongest alarm API: it survives Doze, is exempt from idle batching, and shows up in the system's "next alarm" affordance |
 | Repeat days | Any combination of weekdays, stored as a 7-bit mask (bit 0 = Sunday … bit 6 = Saturday) |
-| Snooze length | 1–30 minutes per alarm |
+| Snooze | 1–30 minutes per alarm, exposed as a real action on alarm-started wake-up sessions |
 | Enable/disable | Per-alarm switch; disabling cancels the pending system alarm immediately |
-| Boot survival | `BootReceiver` re-arms every enabled alarm after a reboot or an app update |
+| Boot and clock-change survival | A minimal device-protected alarm mirror re-arms enabled alarms at locked boot without opening Room, DataStore, credentials, voice, or AI; it reconciles with Room after unlock and also handles app updates, time/time-zone changes, and exact-alarm permission grants |
 | Full-screen wake | A foreground service posts a full-screen-intent notification and launches the wake-up activity over the lock screen |
-| Fallback path | If the activity cannot be launched (OEM restrictions), a ringing high-priority alert notification is posted instead so you are never left unwoken |
+| Offline fallback | Local alarm audio and vibration start immediately and continue until TTS actually begins or the user stops/snoozes; no key, network, ASR, or TTS is required to wake the user |
 
 ### The wake-up session
 | Capability | Detail |
 |---|---|
-| Spoken conversation | Android TTS out, Android `SpeechRecognizer` in, full duplex turn-taking managed by `SessionController` |
+| Spoken conversation | Android TTS out, Android `SpeechRecognizer` in, alternating spoken turn-taking managed by `SessionController` |
 | Typing fallback | Appears automatically when there is no recognizer, the mic permission is missing, or two listening cycles pass in silence — and is always reachable via "Type instead" |
 | Live clock | Large clock plus a colour-coded status pill: Starting / Speaking / Listening / Thinking / Ended |
-| Stop conditions | A stop phrase ("stop", "I'm up", "acordei", "pode parar", …), the session timer expiring, the Stop button, or an unrecoverable error |
+| Stop conditions | A stop phrase ("stop", "I'm up", "acordei", "pode parar", …), the session timer expiring, the Stop button, or an unrecoverable AI error; on AI error the independent alarm keeps ringing until Stop/Snooze |
 | Graceful failure | Missing key, rejected key, TLS interception and network loss each produce a specific, actionable on-screen message instead of a crash |
-| Memory | The last 20 turns are re-sent with each request; the whole session is summarized into a dated daily log at the end |
+| Memory | The last 20 message rows are re-sent with each request; up to 900 characters of raw role-labelled history are appended to the dated daily log at the end |
 
 ### Personalisation
 | Setting | What it changes |
 |---|---|
-| DeepSeek API key | Required. Stored app-private in DataStore, masked in the UI, trimmed and BOM-stripped on paste |
+| DeepSeek API key | Required for conversation. Encrypted with an Android Keystore AES-GCM key, masked in the UI, and trimmed/BOM-stripped on paste |
 | Your name | Ana addresses you by it |
 | Language | TTS voice, recognition language, and the language directive in the system prompt |
 | Habits | Comma-separated; Ana asks about them naturally during the session |
@@ -106,36 +107,38 @@ a thread from one day to the next.
           ▼
   AlarmManager.setAlarmClock ──► AlarmReceiver (BroadcastReceiver)
           │                            │
-          │                            ├─► AlarmService (foreground, specialUse)
-          │                            │      ├─ silent ongoing notification
-          │                            │      ├─ wake lock: screen on
+          │                            ├─► AlarmService (foreground, systemExempted)
+          │                            │      ├─ local alarm sound + vibration
+          │                            │      ├─ silent foreground notification + screen wake
           │                            │      └─ PendingIntent.send() ──► WakeUpActivity
           │                            │            (falls back to a ringing
           │                            │             full-screen-intent alert)
-          │                            └─► reschedule the next occurrence
+          │                            └─► disable one-shot or re-arm repeating occurrence
           ▼
-    WakeUpActivity (show-when-locked, portrait, own task)
+    WakeUpActivity (show-when-locked, adaptive, own task)
           │
           ▼
     SessionController ── state machine ──────────────────────────────┐
           │                                                          │
-          ├─ ConversationEngine.startSession()                       │
+          ├─ TTS warm-up ────────────────┐                           │
+          ├─ ConversationEngine.startSession() (in parallel)         │
           │     ├─ PromptBuilder: persona + profile + date +         │
-          │     │                 yesterday's log                    │
+          │     │                 most recent prior-day log          │
           │     └─ POST https://api.deepseek.com/responses           │
           │                                                          │
-          ├─ TtsManager.speak(reply) ─► completion ─► listen         │
+          ├─ TtsManager.speak(reply) ─► audio start stops alarm      │
+          │                             └► completion ─► listen      │
           ├─ SpeechListener.startListening(lang) ─► transcript ──────┘
           │
           └─ end ─► ConversationEngine.endSession()
-                       └─ MemoryStore.saveDailyLog(summary)  ──► Room
+                       └─ MemoryStore.saveDailyLog(transcript) ──► Room
 ```
 
 Three details worth knowing:
 
-- **The alarm notification is deliberately silent.** Ana speaks; a ringtone would both drown her
-  out and bleed into the microphone during recognition. A loud fallback channel exists and is
-  only used when the wake-up screen could not be launched at all.
+- **The foreground notification is silent, but the alarm is not.** A service-owned local alarm
+  tone and vibration begin without waiting for the network. They stop only when TTS reports real
+  audio start, or when the user explicitly stops or snoozes.
 - **The DeepSeek Responses API is stateless here.** `previous_response_id` / `conversation` are
   not used, so conversation memory is entirely client-side: history is re-sent on every call.
 - **TTS completion drives the state machine.** Some engines drop utterance callbacks, so
@@ -158,7 +161,7 @@ data model.
 | AI | DeepSeek `deepseek-v4-flash` via the Responses API |
 | Voice | Android `TextToSpeech` and `SpeechRecognizer` (no third-party SDKs) |
 | Build | Gradle 8.11.1, AGP 8.9.1, KSP 2.1.0-1.0.29, JDK 17 bytecode |
-| SDK levels | `minSdk` 26 (Android 8.0) · `targetSdk`/`compileSdk` 35 (Android 15) |
+| SDK levels | `minSdk` 26 (Android 8.0) · `targetSdk`/`compileSdk` 36 (Android 16) |
 | Tests | JUnit4, MockK, Robolectric, MockWebServer, Espresso, Compose UI Test, UI Automator |
 
 ## 6. Repository layout
@@ -170,8 +173,10 @@ AnaAlarm/
 ├── gradle.properties             # JVM args, AndroidX flags, test-platform switches
 ├── gradlew / gradlew.bat         # Gradle wrapper (no global Gradle needed)
 ├── local.properties              # sdk.dir — machine specific, NOT committed
+├── .github/workflows/android.yml # Host, API 26/API 36, and signed-release CI gates
 ├── scripts/
-│   └── run-instrumented-tests.ps1  # One-command on-device test run
+│   ├── run-instrumented-tests.ps1  # One-command Windows on-device test run
+│   └── ci/                         # Linux device runner and signed-release smoke helpers
 ├── docs/                         # Architecture, AI, alarms, localization, testing, troubleshooting
 └── app/
     ├── build.gradle.kts          # Module config and dependencies
@@ -192,8 +197,8 @@ AnaAlarm/
         │       ├── ui/              # Compose screens, theme, wake-up session
         │       └── voice/           # TTS manager, speech recognition wrapper
         ├── debug/res/xml/        # Debug-only network config (loopback cleartext for tests)
-        ├── test/                 # 46 JVM unit tests
-        └── androidTest/          # 145 on-device instrumented tests
+        ├── test/                 # Fast JVM unit tests
+        └── androidTest/          # Real Android/Room/Keystore/alarm/voice tests
 ```
 
 ## 7. Prerequisites
@@ -201,7 +206,7 @@ AnaAlarm/
 | Requirement | Notes |
 |---|---|
 | **JDK 17 or 21** | Verified on Temurin/Oracle 21. `java -version` must work from your shell |
-| **Android SDK, platform 35** | Install via Android Studio's SDK Manager, or `sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"` |
+| **Android SDK, platform 36** | Install via Android Studio's SDK Manager, or `sdkmanager "platforms;android-36" "platform-tools"` |
 | **Gradle** | Not needed globally — the wrapper (`gradlew.bat` / `gradlew`) downloads 8.11.1 |
 | **A device or emulator** | Android 8.0+. A physical phone is strongly recommended for voice; emulators vary in microphone and TTS support |
 | **A DeepSeek API key** | Free to create at [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys). Required for conversations; everything else works without one |
@@ -277,10 +282,9 @@ Output: `app/build/outputs/bundle/release/app-release.aab`
 | `.\gradlew.bat --stop` | Kill stale Gradle daemons |
 | `.\gradlew.bat assembleDebug --refresh-dependencies` | Re-resolve after a broken download |
 
-> **Behind a TLS-inspecting antivirus (Avast, Kaspersky, corporate proxies)?** Java's bundled
-> trust store will reject the intercepted certificates. This project already sets
-> `-Djavax.net.ssl.trustStoreType=Windows-ROOT` in `gradle.properties`; if you still hit
-> handshake errors, set the same flag in `JAVA_TOOL_OPTIONS`.
+> **Behind a TLS-inspecting antivirus or corporate proxy?** Configure build tooling and debug
+> devices explicitly. Release API traffic trusts system CAs only; exempt `api.deepseek.com` or use
+> a non-intercepted network. No build disables certificate or hostname verification.
 
 ## 9. Deploy
 
@@ -382,17 +386,17 @@ adb connect <phone-ip>:5555
    versionName = "1.1"
    ```
 
-> **Enabling minification:** the release block currently has `isMinifyEnabled = false`. If you
-> turn it on, keep the kotlinx-serialization and Retrofit rules in `app/proguard-rules.pro` and
-> re-run the instrumented suite against a release build before shipping.
+> Release minification is enabled. Keep the kotlinx-serialization and Retrofit rules in
+> `app/proguard-rules.pro`, and run a signed-release smoke test before shipping.
 
 ### D. Play Store notes specific to this app
 
 - **Alarm apps get privileged permissions, but you must justify them.** `SCHEDULE_EXACT_ALARM`
   and `USE_FULL_SCREEN_INTENT` both require a declaration in the Play Console explaining that
   this is an alarm clock. That is an accepted use case, but the form is mandatory.
-- **`FOREGROUND_SERVICE_SPECIAL_USE`** requires a short justification string; the manifest
-  already ships one in the service's `PROPERTY_SPECIAL_USE_FGS_SUBTYPE` property.
+- **`FOREGROUND_SERVICE_SYSTEM_EXEMPTED`** is used because the service continues a user-scheduled
+  exact alarm with sound/haptics. The app must actually retain exact-alarm access, and the FGS
+  use plus demonstration video must still be declared in Play Console.
 - **Users supply their own API key**, so there is no server-side component to host and no
   backend cost. Mention this in the store listing so the key prompt is not a surprise.
 - Fill in the **Data safety** form honestly: conversation text leaves the device and is sent to
@@ -400,9 +404,10 @@ adb connect <phone-ip>:5555
 
 ### E. Distributing without the Play Store
 
-`assembleRelease` produces a signed APK you can host anywhere. Users must enable "Install
-unknown apps" for their browser or file manager. Keep the same keystore forever — Android
-refuses to update an app whose signature changed.
+`assembleRelease` produces an unsigned release APK unless you supply the signing configuration
+described above. Sign it before hosting it anywhere. Users must enable "Install unknown apps"
+for their browser or file manager. Keep the same keystore forever — Android refuses to update
+an app whose signature changed.
 
 ## 10. First run and configuration
 
@@ -410,8 +415,8 @@ refuses to update an app whose signature changed.
    **microphone**. Both are needed for the full experience; the app degrades gracefully without
    the mic.
 2. If the home screen shows an **exact alarm permission** warning card, tap **Grant permission**
-   and allow it in the system dialog (Android 12+). Without it, alarms become inexact and may
-   fire minutes late.
+   and allow it in the system dialog (Android 12+). Without it, AnaAlarm refuses to claim that an
+   alarm was scheduled and shows an actionable error.
 3. If a **full-screen alarm permission** card appears (Android 14+), grant that too — it is what
    allows the wake-up screen to appear over the lock screen instead of a passive notification.
 4. Open **Settings** (gear icon, top right) and fill in:
@@ -445,7 +450,8 @@ refuses to update an app whose signature changed.
 - **Delete:** tap the trash icon and confirm in the dialog.
 
 ### During a wake-up session
-1. The screen turns on, unlocks past the keyguard and shows a large live clock.
+1. The screen turns on, shows over the keyguard, requests dismissal where the system permits,
+   and displays a large live clock.
 2. Ana speaks the greeting; the status pill reads **Speaking…**.
 3. When she finishes, the pill switches to **Listening…** — answer out loud, normally.
 4. Your transcript appears under "You said", the pill shows **Thinking…**, then she replies.
@@ -459,8 +465,8 @@ refuses to update an app whose signature changed.
 6. If she cannot hear you twice in a row, or the device has no speech recognizer, a text box
    appears. Type your answer and press **Send** — the conversation continues identically. You can
    also switch to typing at any time with **Type instead**.
-7. When the session ends, its summary is saved as today's log, and tomorrow morning Ana will
-   refer back to it.
+7. When the session ends, a bounded role-labelled transcript is appended to today's log, and
+   tomorrow morning Ana can refer back to it.
 
 ### Everyday tips
 - Set the session length to 5 minutes on weekdays; you can always keep talking past the
@@ -476,8 +482,8 @@ coverage.
 
 | Suite | Location | Count | Runtime | What it proves |
 |---|---|---|---|---|
-| JVM unit tests | `app/src/test` | 46 tests / 12 classes | seconds | Pure logic: trigger calculation, prompt building, response parsing, error mapping, settings sanitising, view-model behaviour |
-| Instrumented tests | `app/src/androidTest` | 145 tests / 19 classes | ~3 minutes | The real app on a real Android runtime: SQLite, DataStore, AlarmManager, notification channels, broadcast receivers, foreground service, Compose UI, TTS, speech recognition and the full HTTP stack |
+| JVM unit tests | `app/src/test` | See the generated Gradle report | seconds | Trigger/snooze/direct-boot logic, LLM deadlines and cancellation, migrations/retention, settings, view-models, telemetry, and stale voice-callback rejection |
+| Instrumented tests | `app/src/androidTest` | See the device-reported verdict | ~3 minutes per API | Real Room migrations/retention, Keystore recovery, AlarmManager, receivers/service, Compose, TTS, recognition, and the real HTTP stack against a local fake |
 
 ### Running the unit tests
 
@@ -504,10 +510,8 @@ one-line verdict. To iterate on a single class or test:
 .\scripts\run-instrumented-tests.ps1 -SkipBuild   # reuse the installed APKs
 ```
 
-> The script exists because AGP's `connectedAndroidTest` task streams results over gRPC+TLS,
-> which local HTTPS interception breaks with "Failed to receive the UTP test results". Driving
-> `am instrument` directly sidesteps that entirely. `gradle.properties` also disables the
-> Unified Test Platform for the same reason.
+> The script drives `am instrument` directly, which gives predictable device output and avoids
+> host-specific result-streaming failures.
 
 No API key or internet access is required: the instrumented suite runs a MockWebServer inside
 the app process and swaps the AI backend at runtime, so real conversations are exercised against
@@ -523,34 +527,36 @@ cannot verify (does the phone actually wake you up?), is in [docs/TESTING.md](do
 |---|---|---|
 | `INTERNET` | Talking to the DeepSeek API | No conversation at all |
 | `RECORD_AUDIO` | Speech recognition during a session | Session falls back to typed answers |
-| `SCHEDULE_EXACT_ALARM` | Firing at the exact minute you set | Alarms become inexact and may be delayed |
+| `SCHEDULE_EXACT_ALARM` | Firing at the exact minute you set | Save reports failure and the alarm is not registered until permission is granted |
 | `USE_FULL_SCREEN_INTENT` | Showing the wake-up screen over the lock screen | Only a heads-up notification appears |
-| `POST_NOTIFICATIONS` | The alarm notification carries the full-screen intent | The alarm may not surface at all on Android 13+ |
+| `POST_NOTIFICATIONS` | The alarm notification carries the full-screen intent | Notification/full-screen surfacing is degraded on Android 13+; service-owned sound and vibration can still continue |
 | `RECEIVE_BOOT_COMPLETED` | Re-arming alarms after a reboot | Alarms are lost on restart |
 | `WAKE_LOCK` | Turning the screen on when the alarm fires | Screen may stay off |
-| `VIBRATE` | Vibration on the alarm channel | Silent alert |
-| `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_SPECIAL_USE` | The short-lived service that launches the wake-up screen | The alarm cannot reliably start the UI from the background |
+| `VIBRATE` | Vibration on the alarm channel | Vibration is unavailable; local sound still plays |
+| `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_SYSTEM_EXEMPTED` | Exact-alarm continuation with local sound/haptics and wake UI | The alarm cannot reliably continue from the background |
 
 ## 14. Privacy and data
 
-- **Everything is stored locally.** Alarms, conversation messages and daily logs live in a Room
-  database (`anaalarm.db`) in the app's private storage. Settings live in a private DataStore
-  file. Nothing is uploaded anywhere except as described below.
-- **What leaves the device:** the system prompt (your name, habits, interests, the previous
-  day's summary) and the current conversation turns are sent to `api.deepseek.com` over HTTPS on
+- **Everything is stored locally.** Alarms, transient conversation messages and daily logs live
+  in Room (`anaalarm.db`); settings live in DataStore. App backup is disabled and both stores are
+  explicitly excluded from cloud backup and device transfer.
+- **What leaves the device:** the system prompt (your name, habits, interests, the most recent
+  prior-day log) and the current conversation turns are sent to `api.deepseek.com` over HTTPS on
   each turn. Voice audio itself never reaches DeepSeek — transcription happens through Android's
   own speech recognizer, which may itself be a Google cloud service depending on the device.
-- **The API key** is stored in app-private DataStore preferences. It is masked in the UI and
-  never written to logs in full (`DeepSeekClient.maskKey`). It is *not* encrypted at rest — for
-  a personal app that is a reasonable trade-off, but for wider distribution move it to
-  `EncryptedSharedPreferences` or the Android Keystore.
+- **The API key** is encrypted with AES-GCM using an app-private Android Keystore key before its
+  ciphertext is written to DataStore. Legacy plaintext values are migrated in place and removed.
+  Logs report only whether a key is set and its length—never key characters.
+- **Raw transcript retention is bounded.** After a bounded role-labelled transcript is appended
+  to the daily log, its transient message rows are deleted. Abandoned/failed rows are pruned after
+  seven days; dated daily logs remain for follow-up context.
 - **Uninstalling the app deletes all of it.** There is no cloud account and no sync.
 
 ## 15. Cost of running it
 
 You pay DeepSeek directly for your own key. A 10-minute session is roughly 15–25 API calls, each
-carrying a system prompt of a few hundred tokens plus the recent history, and capped at 400
-output tokens. On `deepseek-v4-flash` pricing that is a very small amount per morning, but it is
+carrying a system prompt of a few hundred tokens plus recent history, with reasoning disabled and
+output capped at 96 tokens. On `deepseek-v4-flash` pricing that is a small amount per morning, but it is
 not zero — check current rates on the DeepSeek pricing page, and note that a longer session
 length means proportionally more calls.
 
@@ -563,10 +569,10 @@ length means proportionally more calls.
 | Alarm stops working after a few days | OEM battery killer | Add AnaAlarm to the "no restrictions" / autostart allow-list (common on Xiaomi, Huawei, Samsung) |
 | "No API key configured" | Key not saved | Settings → paste the key → Save |
 | "DeepSeek rejected the API key" | Wrong or revoked key | Regenerate at platform.deepseek.com |
-| "Secure connection failed" | Antivirus HTTPS interception | Disable HTTPS scanning for the device, or install its root certificate |
+| "Secure connection failed" | HTTPS interception | Exempt `api.deepseek.com`, disable inspection, or use a network without interception |
 | Ana is silent | No TTS voice for the selected language | Install the voice under Settings → Accessibility → Text-to-speech output |
 | She never hears you | No Google speech services, or mic denied | Grant the mic, or just use the typing fallback |
-| She "forgets" yesterday | The previous session ended by force-kill, so no log was written | End sessions with Stop, a stop phrase, or the timer |
+| She "forgets" prior context | The previous session ended by force-kill, so no log was written | End sessions with Stop, a stop phrase, or the timer |
 
 Longer explanations for each of these: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
@@ -581,10 +587,10 @@ Longer explanations for each of these: [docs/TROUBLESHOOTING.md](docs/TROUBLESHO
 - **Speech recognition depends on Google services.** Devices without them fall back to typing.
 - **Full-screen intents are OEM-dependent.** Some manufacturers restrict them regardless of the
   granted permission; the ringing-notification fallback exists for exactly this case.
-- **One-shot alarms re-arm daily.** `AlarmReceiver` re-schedules every alarm after it fires, so
-  an alarm with no repeat days still rings the next day until you disable or delete it. This is
-  intentional, but it surprises people.
-- **The API key is not encrypted at rest** (see [Privacy and data](#14-privacy-and-data)).
+- **Streaming speech is not implemented yet.** Model responses are bounded but still complete
+  before TTS begins. The semantic Responses SSE parser, phrase queue, ordering, cancellation, and
+  rollout contract are specified in
+  [docs/RELIABILITY_AND_LATENCY.md](docs/RELIABILITY_AND_LATENCY.md#responses-streaming-and-phrase-level-tts-overlap).
 - **No in-app usage or cost display.** The key is validated per request; check your balance on
   the DeepSeek dashboard.
 - **Single user, single device.** No accounts, no sync, no backup/restore of conversation history.
@@ -598,8 +604,8 @@ Longer explanations for each of these: [docs/TROUBLESHOOTING.md](docs/TROUBLESHO
 | Change Ana's personality | `PromptBuilder.buildInstructions` — the entire persona and session script is one readable prompt |
 | Add stop phrases | `SessionPhrases.stopPhrases` |
 | Tune session pacing | `SessionController`: `LISTEN_TIMEOUT_MS`, `MAX_SILENT_CYCLES`, and the post-speech settle delay |
-| Add a snooze button to the wake-up screen | `WakeUpScreen` for the UI, `AlarmScheduler` for a one-off `setAlarmClock` at `now + snoozeMinutes` |
-| Store the key securely | Replace the DataStore write in `SettingsStore` with `EncryptedSharedPreferences` |
+| Tune alarm/snooze behavior | `AlarmScheduler`, `AlarmReceiver`, and `SessionController.snoozeNow()` |
+| Change credential storage | `SettingsStore` and `KeystoreSecretCipher` |
 
 ## 19. Documentation index
 
@@ -611,6 +617,9 @@ Longer explanations for each of these: [docs/TROUBLESHOOTING.md](docs/TROUBLESHO
 | [docs/LOCALIZATION.md](docs/LOCALIZATION.md) | How languages work and how to add one |
 | [docs/TESTING.md](docs/TESTING.md) | Automated suites, how to run them, and the manual QA checklist |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Symptom-by-symptom fixes |
+| [docs/RELIABILITY_AND_LATENCY.md](docs/RELIABILITY_AND_LATENCY.md) | Reliability invariants, latency budget, telemetry, and deferred streaming work |
+| [docs/SUPPLY_CHAIN.md](docs/SUPPLY_CHAIN.md) | Strict dependency verification/locking and pinned CI-action maintenance |
+| [docs/PLAY_RELEASE_CHECKLIST.md](docs/PLAY_RELEASE_CHECKLIST.md) | Physical-device release matrix and Play foreground/full-screen declarations |
 
 ## 20. License
 

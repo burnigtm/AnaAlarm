@@ -43,8 +43,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.anaalarm.AnaAlarmApp
 import com.anaalarm.R
+import com.anaalarm.alarm.AlarmScheduleResult
+import com.anaalarm.data.AlarmEntity
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.time.format.TextStyle
 import java.util.Locale
@@ -63,6 +68,7 @@ fun AlarmEditScreen(alarmId: Long, onBack: () -> Unit) {
     var days by remember { mutableIntStateOf(0) }
     var snooze by remember { mutableIntStateOf(10) }
     var enabled by remember { mutableStateOf(true) }
+    var saving by remember { mutableStateOf(false) }
 
     LaunchedEffect(alarmId) {
         val existing = if (alarmId >= 0) app.memoryStore.getAlarm(alarmId) else null
@@ -186,36 +192,131 @@ fun AlarmEditScreen(alarmId: Long, onBack: () -> Unit) {
                 Button(
                     onClick = {
                         scope.launch {
-                            val savedId = app.memoryStore.upsertAlarm(
-                                id = if (isNew) 0 else alarmId,
-                                hour = hour,
-                                minute = minute,
-                                days = days,
-                                snoozeMinutes = snooze,
-                                enabled = if (isNew) true else enabled
-                            )
-                            app.memoryStore.getAlarm(savedId)?.let { alarm ->
-                                runCatching { app.alarmScheduler.schedule(alarm) }
+                            if (saving) return@launch
+                            saving = true
+                            var persistedId: Long? = null
+                            var outcomeHandled = false
+                            val rollbackUnscheduledSave: suspend (Long) -> Unit = { id ->
+                                try {
+                                    if (isNew) {
+                                        app.memoryStore.deleteAlarm(id)
+                                    } else {
+                                        app.memoryStore.setAlarmEnabled(id, false)
+                                    }
+                                } catch (_: Exception) {
+                                    // Best effort: still remove any stale PendingIntents below.
+                                }
+                                runCatching {
+                                    app.alarmScheduler.cancel(
+                                        AlarmEntity(
+                                            id = id,
+                                            hour = hour,
+                                            minute = minute,
+                                            days = days,
+                                            snoozeMinutes = snooze,
+                                            enabled = true
+                                        )
+                                    )
+                                }
                             }
-                            val next = app.alarmScheduler.nextFireTime(hour, minute, days)
-                            val timeStr = String.format(Locale.getDefault(), "%02d:%02d", hour, minute)
-                            val today = java.time.LocalDate.now()
-                            val label = when {
-                                next.toLocalDate() == today ->
-                                    context.getString(R.string.alarm_scheduled_today, timeStr)
-                                next.toLocalDate() == today.plusDays(1) ->
-                                    context.getString(R.string.alarm_scheduled_tomorrow, timeStr)
-                                else -> context.getString(
-                                    R.string.alarm_scheduled_day,
-                                    next.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()),
-                                    timeStr
+                            try {
+                                val savedId = app.memoryStore.upsertAlarm(
+                                    id = if (isNew) 0 else alarmId,
+                                    hour = hour,
+                                    minute = minute,
+                                    days = days,
+                                    snoozeMinutes = snooze,
+                                    enabled = if (isNew) true else enabled
                                 )
+                                persistedId = savedId
+                                val alarm = app.memoryStore.getAlarm(savedId)
+                                val result = alarm?.let(app.alarmScheduler::schedule)
+                                    ?: AlarmScheduleResult.Failed(
+                                        AlarmScheduleResult.Failed.Reason.SYSTEM_ERROR
+                                    )
+
+                                when (result) {
+                                    is AlarmScheduleResult.Scheduled -> {
+                                        outcomeHandled = true
+                                        val timeStr = String.format(
+                                            Locale.getDefault(),
+                                            "%02d:%02d",
+                                            hour,
+                                            minute
+                                        )
+                                        val today = java.time.LocalDate.now()
+                                        val label = when {
+                                            result.triggerAt.toLocalDate() == today ->
+                                                context.getString(
+                                                    R.string.alarm_scheduled_today,
+                                                    timeStr
+                                                )
+                                            result.triggerAt.toLocalDate() == today.plusDays(1) ->
+                                                context.getString(
+                                                    R.string.alarm_scheduled_tomorrow,
+                                                    timeStr
+                                                )
+                                            else -> context.getString(
+                                                R.string.alarm_scheduled_day,
+                                                result.triggerAt.dayOfWeek.getDisplayName(
+                                                    TextStyle.SHORT,
+                                                    Locale.getDefault()
+                                                ),
+                                                timeStr
+                                            )
+                                        }
+                                        snackbar.showSnackbar(label)
+                                        kotlinx.coroutines.delay(1400)
+                                        onBack()
+                                    }
+
+                                    AlarmScheduleResult.Cancelled -> {
+                                        outcomeHandled = true
+                                        snackbar.showSnackbar(context.getString(R.string.saved))
+                                        kotlinx.coroutines.delay(1400)
+                                        onBack()
+                                    }
+
+                                    is AlarmScheduleResult.Failed -> {
+                                        // Never leave an enabled database row that has no system
+                                        // alarm. A failed new save is removed; an existing row is
+                                        // retained disabled so the user's edits are not lost.
+                                        rollbackUnscheduledSave(savedId)
+                                        outcomeHandled = true
+                                        val message = if (
+                                            result.reason == AlarmScheduleResult.Failed.Reason
+                                                .EXACT_ALARM_PERMISSION_REQUIRED
+                                        ) {
+                                            context.getString(R.string.perm_alarm_denied)
+                                        } else {
+                                            context.getString(R.string.alarm_schedule_failed)
+                                        }
+                                        snackbar.showSnackbar(message)
+                                    }
+                                }
+                            } catch (cancelled: CancellationException) {
+                                if (!outcomeHandled) {
+                                    persistedId?.let { id ->
+                                        withContext(NonCancellable) {
+                                            rollbackUnscheduledSave(id)
+                                        }
+                                    }
+                                }
+                                throw cancelled
+                            } catch (_: Exception) {
+                                if (!outcomeHandled) {
+                                    persistedId?.let { rollbackUnscheduledSave(it) }
+                                    outcomeHandled = true
+                                }
+                                snackbar.showSnackbar(
+                                    context.getString(R.string.alarm_schedule_failed)
+                                )
+                            } finally {
+                                saving = false
                             }
-                            snackbar.showSnackbar(label)
-                            kotlinx.coroutines.delay(1400)
-                            onBack()
                         }
                     },
+                    enabled = !saving,
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(context.getString(R.string.save))

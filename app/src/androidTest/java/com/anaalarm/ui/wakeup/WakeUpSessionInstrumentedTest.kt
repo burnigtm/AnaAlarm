@@ -1,8 +1,11 @@
 package com.anaalarm.ui.wakeup
 
+import android.content.Intent
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
@@ -12,6 +15,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.rule.GrantPermissionRule
 import com.anaalarm.R
+import com.anaalarm.alarm.AlarmReceiver
+import com.anaalarm.alarm.AlarmService
 import com.anaalarm.support.FakeAiServer
 import com.anaalarm.support.Screens
 import com.anaalarm.support.TestEnv
@@ -21,6 +26,7 @@ import com.anaalarm.support.hasTextField
 import com.anaalarm.support.str
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -90,6 +96,18 @@ class WakeUpSessionInstrumentedTest {
         compose.awaitText(str(R.string.wake_up_title))
         compose.onNodeWithText(str(R.string.wake_up_title)).assertIsDisplayed()
         compose.onNodeWithText(str(R.string.stop)).assertIsDisplayed()
+        compose.onAllNodesWithText(str(R.string.snooze_action)).assertCountEquals(0)
+    }
+
+    @Test
+    fun realAlarmSessionsExposeSnooze() {
+        val intent = Intent(TestEnv.context, WakeUpActivity::class.java)
+            .putExtra(AlarmReceiver.EXTRA_ALARM_ID, 42L)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        scenario = ActivityScenario.launch(intent)
+
+        compose.awaitText(str(R.string.snooze_action))
+        compose.onNodeWithText(str(R.string.snooze_action)).assertIsDisplayed()
     }
 
     @Test
@@ -100,6 +118,37 @@ class WakeUpSessionInstrumentedTest {
         compose.awaitText(str(R.string.no_api_key), timeoutMs = 40_000)
         compose.onNodeWithText(str(R.string.no_api_key)).assertIsDisplayed()
         compose.onNodeWithText(str(R.string.status_ended)).assertIsDisplayed()
+    }
+
+    @Test
+    fun overlappingAlarmIntentReplacesTheControllerAndAlarmId() {
+        scenario = ActivityScenario.launch(AlarmService.wakeUpIntent(TestEnv.context, 41L))
+        compose.awaitText(str(R.string.no_api_key), timeoutMs = 40_000)
+
+        TestEnv.context.startActivity(AlarmService.wakeUpIntent(TestEnv.context, 42L))
+
+        assertTrue(
+            "singleTask activity kept the first alarm controller",
+            TestEnv.waitUntil(timeoutMs = 15_000) {
+                var activeId = -1L
+                scenario?.onActivity { activeId = it.activeAlarmIdForTest() }
+                activeId == 42L
+            }
+        )
+    }
+
+    @Test
+    fun configurationRecreationRetainsTheLiveController() {
+        scenario = ActivityScenario.launch(AlarmService.wakeUpIntent(TestEnv.context, 43L))
+        compose.awaitText(str(R.string.no_api_key), timeoutMs = 40_000)
+        var before = 0
+        scenario?.onActivity { before = it.controllerIdentityForTest() }
+
+        scenario?.recreate()
+
+        var after = 0
+        scenario?.onActivity { after = it.controllerIdentityForTest() }
+        assertEquals(before, after)
     }
 
     @Test

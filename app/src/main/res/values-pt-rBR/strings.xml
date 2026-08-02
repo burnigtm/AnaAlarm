@@ -14,6 +14,7 @@
     <string name="alarm_scheduled_today">Alarme definido para hoje às %1$s</string>
     <string name="alarm_scheduled_tomorrow">Alarme definido para amanhã às %1$s</string>
     <string name="alarm_scheduled_day">Alarme definido para %1$s às %2$s</string>
+    <string name="alarm_schedule_failed">Não foi possível agendar este alarme. Verifique as permissões de alarme e tente novamente.</string>
     <string name="enabled_label">Ativado</string>
     <string name="delete">Excluir</string>
     <string name="save">Salvar</string>
@@ -57,13 +58,15 @@
     <string name="status_thinking">Pensando…</string>
     <string name="status_starting">Iniciando…</string>
     <string name="status_ended">Sessão encerrada. Hora de levantar!</string>
+    <string name="snooze_action">Soneca</string>
+    <string name="snooze_failed">Não foi possível agendar a soneca. Mantenha esta tela aberta e tente novamente.</string>
     <string name="stop">Parar</string>
     <string name="you_said">Você disse</string>
     <string name="did_not_catch">Desculpe, não entendi. Pode repetir?</string>
     <string name="mic_error">Não consegui ouvir você. Toque em Parar ou verifique o microfone.</string>
     <string name="ai_error">Não consegui falar com a IA. Verifique sua chave de API e a conexão com a internet.</string>
     <string name="invalid_api_key">A DeepSeek rejeitou a chave de API. Abra as Configurações e cole uma chave válida de platform.deepseek.com.</string>
-    <string name="ssl_error">Falha na conexão segura. Se o antivírus faz inspeção HTTPS (por exemplo Avast), desative-a para o emulador ou instale o certificado no dispositivo.</string>
+    <string name="ssl_error">Falha na conexão segura. Desative a inspeção HTTPS para api.deepseek.com ou use uma rede sem interceptação.</string>
     <string name="network_error">Erro de rede ao falar com a DeepSeek. Verifique se o emulador/dispositivo tem internet.</string>
     <string name="type_fallback_hint">Digite sua resposta aqui (voz indisponível)…</string>
     <string name="type_fallback_switch">Não estou te ouvindo. Use a caixa de texto para responder.</string>

@@ -1,6 +1,8 @@
 package com.anaalarm.ui.wakeup
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +22,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,6 +67,7 @@ fun WakeUpScreen(controller: SessionController) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
@@ -113,6 +118,17 @@ fun WakeUpScreen(controller: SessionController) {
                     )
                 }
 
+                if (controller.partialUserText.isNotBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = controller.partialUserText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontStyle = FontStyle.Italic,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
+                }
+
                 controller.errorText?.let { error ->
                     Spacer(Modifier.height(12.dp))
                     Text(
@@ -143,6 +159,7 @@ fun WakeUpScreen(controller: SessionController) {
                             onValueChange = { typed = it },
                             label = { Text(context.getString(R.string.type_fallback_hint)) },
                             singleLine = true,
+                            enabled = controller.status == SessionStatus.LISTENING,
                             modifier = Modifier.weight(1f)
                         )
                         Spacer(Modifier.width(8.dp))
@@ -151,12 +168,13 @@ fun WakeUpScreen(controller: SessionController) {
                                 controller.submitText(typed)
                                 typed = ""
                             },
-                            enabled = typed.isNotBlank()
+                            enabled = typed.isNotBlank() &&
+                                controller.status == SessionStatus.LISTENING
                         ) {
                             Text(context.getString(R.string.send))
                         }
                     }
-                } else {
+                } else if (controller.status == SessionStatus.LISTENING) {
                     Spacer(Modifier.height(4.dp))
                     TextButton(onClick = { controller.enableTextInput() }) {
                         Text(context.getString(R.string.type_instead))
@@ -164,6 +182,22 @@ fun WakeUpScreen(controller: SessionController) {
                 }
 
                 Spacer(Modifier.height(24.dp))
+                if (controller.snoozeAvailable) {
+                    OutlinedButton(
+                        onClick = { controller.snoozeNow() },
+                        enabled = !controller.snoozeInFlight,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                    ) {
+                        Text(
+                            text = context.getString(R.string.snooze_action),
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
                 Button(
                     onClick = { controller.stopNow() },
                     colors = ButtonDefaults.buttonColors(

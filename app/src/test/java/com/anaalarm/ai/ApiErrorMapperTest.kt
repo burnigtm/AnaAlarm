@@ -36,12 +36,11 @@ class ApiErrorMapperTest {
     }
 
     @Test
-    fun `maskKey never returns full secret`() {
+    fun `maskKey reports only presence and length`() {
         val key = "sk-abcdefghijklmnopqrstuvwxyz"
         val masked = DeepSeekClient.maskKey(key)
-        assertTrue(masked.startsWith("set(len="))
+        assertEquals("set(len=${key.length})", masked)
+        assertTrue(!masked.contains("sk-"))
         assertTrue(!masked.contains("abcdefghijklmnopqrstuvwxyz"))
-        assertTrue(masked.contains("sk-"))
-        assertTrue(masked.endsWith("yz)"))
     }
 }

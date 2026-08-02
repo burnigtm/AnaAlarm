@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- DataStore contains the API credential and Room contains private transcripts. -->
+    <exclude domain="file" path="datastore/" />
+    <exclude domain="database" path="." />
+</full-backup-content>

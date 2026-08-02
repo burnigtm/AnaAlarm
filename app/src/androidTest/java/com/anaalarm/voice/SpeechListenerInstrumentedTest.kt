@@ -104,7 +104,9 @@ class SpeechListenerInstrumentedTest {
             SpeechRecognizer.ERROR_NO_MATCH to "ERROR_NO_MATCH",
             SpeechRecognizer.ERROR_RECOGNIZER_BUSY to "ERROR_RECOGNIZER_BUSY",
             SpeechRecognizer.ERROR_SERVER to "ERROR_SERVER",
-            SpeechRecognizer.ERROR_SPEECH_TIMEOUT to "ERROR_SPEECH_TIMEOUT"
+            SpeechRecognizer.ERROR_SPEECH_TIMEOUT to "ERROR_SPEECH_TIMEOUT",
+            12 to "ERROR_LANGUAGE_NOT_SUPPORTED",
+            13 to "ERROR_LANGUAGE_UNAVAILABLE"
         )
 
         expected.forEach { (code, name) ->

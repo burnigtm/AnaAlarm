@@ -4,11 +4,12 @@ import android.content.Intent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import com.anaalarm.support.TestEnv
+import com.anaalarm.data.AlarmEntity
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -25,7 +26,10 @@ class BootReceiverInstrumentedTest {
     @Before
     fun setUp() {
         TestEnv.clearDatabase()
-        assumeTrue(TestEnv.app.alarmScheduler.canScheduleExact())
+        assertTrue(
+            "SCHEDULE_EXACT_ALARM must be granted for the required boot suite",
+            TestEnv.app.alarmScheduler.canScheduleExact()
+        )
         TestEnv.waitUntil(timeoutMs = 3_000) { nextTrigger() == null }
     }
 
@@ -59,6 +63,45 @@ class BootReceiverInstrumentedTest {
     }
 
     @Test
+    fun wallClockChangeReArmsStoredAlarms() {
+        val expected = storeEnabledAlarm(minutesFromNow = 9)
+
+        receiver.onReceive(TestEnv.context, Intent(Intent.ACTION_TIME_CHANGED))
+
+        assertTrue(
+            "alarm was not re-armed after TIME_SET",
+            TestEnv.waitUntil { nextTrigger() == expected }
+        )
+    }
+
+    @Test
+    fun timeZoneChangeReArmsStoredAlarms() {
+        val expected = storeEnabledAlarm(minutesFromNow = 9)
+
+        receiver.onReceive(TestEnv.context, Intent(Intent.ACTION_TIMEZONE_CHANGED))
+
+        assertTrue(
+            "alarm was not re-armed after TIMEZONE_CHANGED",
+            TestEnv.waitUntil { nextTrigger() == expected }
+        )
+    }
+
+    @Test
+    fun exactAlarmPermissionChangeReArmsStoredAlarms() {
+        val expected = storeEnabledAlarm(minutesFromNow = 9)
+
+        receiver.onReceive(
+            TestEnv.context,
+            Intent("android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED")
+        )
+
+        assertTrue(
+            "alarm was not re-armed after exact-alarm permission changed",
+            TestEnv.waitUntil { nextTrigger() == expected }
+        )
+    }
+
+    @Test
     fun unrelatedBroadcastsAreIgnored() {
         val expected = storeEnabledAlarm(minutesFromNow = 10)
 
@@ -79,6 +122,56 @@ class BootReceiverInstrumentedTest {
 
         Thread.sleep(1_500)
         assertNotEquals(expected, nextTrigger())
+    }
+
+    @Test
+    fun lockedBootReArmsFromDeviceProtectedMirrorWithoutRoom() {
+        val target = LocalDateTime.now().plusMinutes(12)
+        val alarm = AlarmEntity(
+            id = 4_009L,
+            hour = target.hour,
+            minute = target.minute,
+            snoozeMinutes = 9
+        )
+        val expected = triggerOf(alarm.hour, alarm.minute)
+        assertTrue(TestEnv.app.alarmScheduler.schedule(alarm) is AlarmScheduleResult.Scheduled)
+
+        // Remove only the framework registration. The device-protected mirror must survive so
+        // LOCKED_BOOT_COMPLETED can prove its API-26+ recovery path without AlarmManager.cancelAll.
+        TestEnv.app.alarmScheduler.cancelRegular(alarm)
+        assertTrue(TestEnv.waitUntil { nextTrigger() == null })
+        receiver.onReceive(TestEnv.context, Intent(Intent.ACTION_LOCKED_BOOT_COMPLETED))
+
+        assertTrue(
+            "LOCKED_BOOT_COMPLETED did not use the device-protected mirror",
+            TestEnv.waitUntil { nextTrigger() == expected }
+        )
+    }
+
+    @Test
+    fun retiredLockedBootOneShotIsNotResurrected() {
+        val target = LocalDateTime.now().plusMinutes(13)
+        val alarm = AlarmEntity(
+            id = 4_008L,
+            hour = target.hour,
+            minute = target.minute,
+            snoozeMinutes = 8
+        )
+        assertTrue(TestEnv.app.alarmScheduler.schedule(alarm) is AlarmScheduleResult.Scheduled)
+        assertEquals(
+            FiredAlarmResult.OneShotDisabled,
+            TestEnv.app.alarmScheduler.handleDirectBootFiredAlarm(alarm.id)
+        )
+
+        TestEnv.app.alarmScheduler.cancelRegular(alarm)
+        receiver.onReceive(TestEnv.context, Intent(Intent.ACTION_LOCKED_BOOT_COMPLETED))
+
+        Thread.sleep(1_000)
+        assertTrue("retired one-shot was re-armed", nextTrigger() == null)
+        assertTrue(
+            "retirement discarded snooze state",
+            TestEnv.app.alarmScheduler.directBootSnoozeMinutes(alarm.id) == 8
+        )
     }
 
     private fun storeEnabledAlarm(minutesFromNow: Long): Long = runBlocking {

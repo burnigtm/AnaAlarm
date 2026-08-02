@@ -16,7 +16,13 @@ data class AlarmEntity(
     val timeMinutes: Int get() = hour * 60 + minute
 }
 
-@Entity(tableName = "messages")
+@Entity(
+    tableName = "messages",
+    indices = [
+        Index(value = ["sessionId", "timestamp"]),
+        Index(value = ["timestamp"])
+    ]
+)
 data class MessageEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val sessionId: Long,
