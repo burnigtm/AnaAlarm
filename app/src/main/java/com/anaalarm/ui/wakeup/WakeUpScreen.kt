@@ -51,6 +51,7 @@ fun WakeUpScreen(controller: SessionController) {
     val context = LocalContext.current
     var now by remember { mutableStateOf(LocalTime.now()) }
     var typed by remember { mutableStateOf("") }
+    val actionAreaBottomPadding = if (controller.snoozeAvailable) 196.dp else 116.dp
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -68,7 +69,14 @@ fun WakeUpScreen(controller: SessionController) {
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp),
+                // Keep conversation/error content scrollable without allowing it to push the
+                // safety-critical alarm actions below the viewport.
+                .padding(
+                    start = 24.dp,
+                    top = 24.dp,
+                    end = 24.dp,
+                    bottom = actionAreaBottomPadding
+                ),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
@@ -181,39 +189,49 @@ fun WakeUpScreen(controller: SessionController) {
                     }
                 }
 
-                Spacer(Modifier.height(24.dp))
-                if (controller.snoozeAvailable) {
-                    OutlinedButton(
-                        onClick = { controller.snoozeNow() },
-                        enabled = !controller.snoozeInFlight,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp)
-                    ) {
-                        Text(
-                            text = context.getString(R.string.snooze_action),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                }
-                Button(
-                    onClick = { controller.stopNow() },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError
-                    ),
+            }
+        }
+
+        // This panel is deliberately outside the scroll container. Stop must remain reachable
+        // even when a long AI response, transcription, or error fills the conversation area.
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(start = 24.dp, top = 12.dp, end = 24.dp, bottom = 24.dp)
+        ) {
+            if (controller.snoozeAvailable) {
+                OutlinedButton(
+                    onClick = { controller.snoozeNow() },
+                    enabled = !controller.snoozeInFlight,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(64.dp)
+                        .height(56.dp)
                 ) {
                     Text(
-                        text = context.getString(R.string.stop),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
+                        text = context.getString(R.string.snooze_action),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
+                Spacer(Modifier.height(12.dp))
+            }
+            Button(
+                onClick = { controller.stopNow() },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+            ) {
+                Text(
+                    text = context.getString(R.string.stop),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

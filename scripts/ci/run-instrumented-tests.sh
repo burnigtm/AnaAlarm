@@ -27,6 +27,8 @@ test_apk="app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
 required_classes="com.anaalarm.alarm.AlarmSchedulerInstrumentedTest,com.anaalarm.alarm.BootReceiverInstrumentedTest,com.anaalarm.alarm.AlarmFiringInstrumentedTest,com.anaalarm.alarm.NotificationsInstrumentedTest"
 required_test_count=34
 required_skip_count=0
+aggregate_test_count=173
+aggregate_skip_count=0
 
 set_required_appop() {
   local operation="$1"
@@ -49,6 +51,48 @@ set_required_appop() {
     echo "Required app-op $operation was not confirmed in allow mode: $get_output" >&2
     return 1
   fi
+}
+
+configure_test_capabilities() {
+  # A missing microphone grant or recognizer must fail visibly; the aggregate suite permits no
+  # ignored/assumption tests on the Google APIs CI images.
+  adb shell pm grant "$app_id" android.permission.RECORD_AUDIO
+  if (( api_level >= 33 )); then
+    adb shell pm grant "$app_id" android.permission.POST_NOTIFICATIONS
+  fi
+  if (( api_level >= 31 )); then
+    set_required_appop SCHEDULE_EXACT_ALARM
+  fi
+  if (( api_level >= 34 )); then
+    set_required_appop USE_FULL_SCREEN_INTENT
+  fi
+}
+
+clear_package_data() {
+  local package_name="$1"
+  local clear_output
+  if ! clear_output="$(adb shell pm clear "$package_name" 2>&1 | tr -d '\r')"; then
+    printf 'pm clear %s: %s\n' "$package_name" "$clear_output" >> "$preflight_log"
+    echo "Could not clear $package_name between instrumented suites." >&2
+    return 1
+  fi
+  printf 'pm clear %s: %s\n' "$package_name" "$clear_output" >> "$preflight_log"
+  if [[ "$clear_output" != "Success" ]]; then
+    echo "Unexpected pm clear result for $package_name: $clear_output" >&2
+    return 1
+  fi
+}
+
+reset_between_suites() {
+  # The required phase exercises real Activities, services, alarms, Room, and device-protected
+  # state. A second instrumentation process is not a clean-install boundary, so erase both
+  # packages explicitly and restore every required capability before the aggregate phase.
+  adb shell am force-stop "$app_id"
+  clear_package_data "$app_id"
+  clear_package_data "$test_id"
+  configure_test_capabilities
+  adb shell input keyevent KEYCODE_WAKEUP >/dev/null
+  adb shell wm dismiss-keyguard >/dev/null
 }
 
 run_instrumentation() {
@@ -115,18 +159,8 @@ if [[ "$device_api" != "$api_level" ]]; then
 fi
 printf 'device_api=%s\n' "$device_api" > "$preflight_log"
 
-# Audio is optional, but notifications and alarm special-access are mandatory for their
-# applicable platform versions. Required app-ops are set and read back without `|| true`.
-adb shell pm grant "$app_id" android.permission.RECORD_AUDIO >/dev/null 2>&1 || true
-if (( api_level >= 33 )); then
-  adb shell pm grant "$app_id" android.permission.POST_NOTIFICATIONS
-fi
-if (( api_level >= 31 )); then
-  set_required_appop SCHEDULE_EXACT_ALARM
-fi
-if (( api_level >= 34 )); then
-  set_required_appop USE_FULL_SCREEN_INTENT
-fi
+# Runtime permissions and alarm special-access are mandatory and read back where app-ops apply.
+configure_test_capabilities
 
 adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0
@@ -141,8 +175,14 @@ run_instrumentation \
   "$required_test_count" \
   "$required_skip_count"
 
-# The aggregate suite runs separately so optional speech/TTS hardware assumptions remain legal,
-# while the required alarm path has already produced its own exact count/skip verdict.
-run_instrumentation "Aggregate instrumented suite" "" "$instrument_log" -1 -1
+# Do not let the first phase's durable app data, tasks, services, or permission mutations influence
+# the aggregate phase. The complete CI image suite is also fail-closed on count and assumptions.
+reset_between_suites
+run_instrumentation \
+  "Aggregate instrumented suite" \
+  "" \
+  "$instrument_log" \
+  "$aggregate_test_count" \
+  "$aggregate_skip_count"
 
 echo "Instrumented tests passed on API $api_level."

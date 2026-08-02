@@ -71,10 +71,13 @@ exits. A successful workflow run—not this configuration alone—is the executi
 
 Before the aggregate device suite, CI runs the alarm scheduler, boot receiver, notification, and
 end-to-end firing classes as a required group. That group must report exactly 34 tests and exactly
-zero skips on both API 26 and API 36. Unexpected assumptions/ignores, a missing exact-alarm grant,
-a missing full-screen grant, or a zero-test runner invocation therefore fails even if the later
-aggregate suite would print `OK`. The locked-boot cases cancel only their regular PendingIntent,
-preserving the device-protected mirror and exercising the real API-26+ recovery path.
+zero skips on both API 26 and API 36. CI then clears both app packages, restores and verifies the
+required capabilities, and executes the complete 173-test aggregate suite from clean app data.
+That phase must also run exactly 173 tests with zero skips on the fixed Google APIs images.
+Unexpected assumptions/ignores, a missing exact-alarm grant, a missing full-screen grant, or a
+zero/partial runner invocation therefore fails closed. The locked-boot cases cancel only their
+regular PendingIntent, preserving the device-protected mirror and exercising the real API-26+
+recovery path.
 
 ```text
 host: test + compile androidTest → debug/release build → debug/release lint
@@ -103,11 +106,12 @@ Real conversations are exercised over the real Retrofit/OkHttp/serialization sta
   first, OkHttp burns a full connect timeout before falling back, turning fast tests into
   minute-long hangs.
 
-Voice is not faked. TTS and speech recognition run against whatever the device provides, and the
-tests use JUnit assumptions to skip (not fail) when a device has no engine.
-CI deliberately uses the official `google_apis` API 26 and API 36 images, both of which are present
-in Google's system-image repository, to maximize real TTS/SpeechRecognizer execution instead of
-skips while keeping hardware-availability assumptions honest.
+Voice output and recognition still run against whatever the device provides. One negative-path
+test injects an unavailable-recognizer capability so the client-error contract is deterministic;
+it does not fake recognition results. Local or physical-device runs may use JUnit assumptions for
+genuinely absent TTS/recognizer hardware. CI deliberately uses fixed `google_apis` API 26 and API
+36 images and rejects every skipped aggregate test, so a changed/missing engine is visible as a
+release-gate failure rather than a green no-op.
 
 ---
 

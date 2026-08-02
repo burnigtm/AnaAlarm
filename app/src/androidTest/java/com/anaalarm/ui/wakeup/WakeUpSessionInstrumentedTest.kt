@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
@@ -78,7 +79,13 @@ class WakeUpSessionInstrumentedTest {
     /** The controller only shows the text field once voice input is ruled out. */
     private fun switchToTyping() {
         if (!compose.hasTextField()) {
-            compose.onNodeWithText(str(R.string.type_instead)).performClick()
+            // The greeting text can be visible while TTS is still finishing. Wait for the
+            // controller's LISTENING transition instead of racing the conditional fallback.
+            compose.awaitText(str(R.string.type_instead), timeoutMs = 40_000)
+            compose.onNodeWithText(str(R.string.type_instead))
+                .performScrollTo()
+                .assertIsDisplayed()
+                .performClick()
         }
         compose.awaitTextField()
     }

@@ -9,7 +9,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeFalse
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
@@ -52,7 +51,11 @@ class SpeechListenerInstrumentedTest {
 
     @Test
     fun startingWithoutARecognizerReportsAClientError() {
-        assumeFalse("device has a recognizer", listener.isAvailable)
+        listener.destroy()
+        listener = SpeechListener(
+            context = TestEnv.context,
+            recognizerAvailabilityOverride = { false }
+        )
         val error = CountDownLatch(1)
         var code: Int? = null
         listener.onError = { received ->

@@ -1,6 +1,10 @@
 package com.anaalarm.alarm
 
 import android.content.Intent
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
@@ -17,6 +21,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.LocalDateTime
@@ -32,6 +37,9 @@ import java.time.ZoneId
 @RunWith(AndroidJUnit4::class)
 @LargeTest
 class AlarmFiringInstrumentedTest {
+
+    @get:Rule
+    val compose = createEmptyComposeRule()
 
     private val device: UiDevice
         get() = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
@@ -140,7 +148,11 @@ class AlarmFiringInstrumentedTest {
             AlarmService.isFallbackActiveForTest()
         )
 
-        device.findObject(By.text(str(R.string.stop)))?.click()
+        // Query the app's Compose tree so a heads-up notification action with the same label
+        // cannot satisfy the assertion or receive the click.
+        compose.onNodeWithText(str(R.string.stop))
+            .assertIsDisplayed()
+            .performClick()
 
         assertTrue(
             "wake-up screen stayed open after Stop",
@@ -168,7 +180,9 @@ class AlarmFiringInstrumentedTest {
 
         val earliest = System.currentTimeMillis() + 6 * 60_000L
         val latest = System.currentTimeMillis() + 8 * 60_000L
-        device.findObject(By.text(str(R.string.snooze_action)))?.click()
+        compose.onNodeWithText(str(R.string.snooze_action))
+            .assertIsDisplayed()
+            .performClick()
 
         assertTrue(
             "Snooze did not close the failed wake session",

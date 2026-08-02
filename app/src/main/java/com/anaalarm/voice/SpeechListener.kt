@@ -21,7 +21,10 @@ import java.util.concurrent.atomic.AtomicLong
  * started. Every request therefore owns a generation. Only callbacks from the current generation
  * can update state or reach the session controller.
  */
-class SpeechListener(context: Context) {
+class SpeechListener internal constructor(
+    context: Context,
+    private val recognizerAvailabilityOverride: (() -> Boolean)? = null
+) {
 
     private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -45,7 +48,9 @@ class SpeechListener(context: Context) {
         private set
 
     val isAvailable: Boolean
-        get() = runCatching {
+        get() = recognizerAvailabilityOverride?.let { availabilityCheck ->
+            runCatching { availabilityCheck() }.getOrDefault(false)
+        } ?: runCatching {
             val onDeviceAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                 SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)
             onDeviceAvailable || SpeechRecognizer.isRecognitionAvailable(appContext)
