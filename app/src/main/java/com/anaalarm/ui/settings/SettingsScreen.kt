@@ -126,7 +126,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Ana") },
+                label = { Text(context.getString(R.string.name_hint)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )

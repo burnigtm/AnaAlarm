@@ -1,5 +1,13 @@
 name: Android quality
 
+# Decision: GitHub Actions remains the only CI/signing runner. Cursor Origin
+# https://origin.cursor.com/acidburn/AnaAlarm.git is the source of truth, but
+# Actions does not run there. Push the same commit to github.com/burnigtm/AnaAlarm
+# (see CONTRIBUTING.md and scripts/push-ci-mirror.ps1) so Host, API 26, API 36,
+# and the gated installable APK still execute. Secrets stay in the GitHub
+# Environment internal-distribution. Do not weaken these gates.
+# Play Store / bundleRelease is out of scope (docs/PLAY_RELEASE_CHECKLIST.md).
+
 on:
   workflow_dispatch:
   push:

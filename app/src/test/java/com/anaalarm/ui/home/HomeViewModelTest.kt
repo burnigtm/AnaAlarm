@@ -12,12 +12,14 @@ import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import java.time.LocalDateTime
@@ -98,11 +100,36 @@ class HomeViewModelTest {
             AlarmScheduleResult.Failed.Reason.EXACT_ALARM_PERMISSION_REQUIRED
         )
 
+        val collected = mutableListOf<HomeNotice>()
+        val job = launch { vm.notices.collect { collected.add(it) } }
+
         vm.toggleAlarm(alarm)
         advanceUntilIdle()
+        job.cancel()
 
         coVerify { memory.setAlarmEnabled(7, true) }
         coVerify { memory.setAlarmEnabled(7, false) }
         verify { scheduler.cancel(enabled) }
+        assertEquals(
+            listOf(
+                HomeNotice.ScheduleFailed(
+                    AlarmScheduleResult.Failed.Reason.EXACT_ALARM_PERMISSION_REQUIRED
+                )
+            ),
+            collected
+        )
+    }
+
+    @Test
+    fun `upcoming picks the soonest enabled alarm`() {
+        val now = LocalDateTime.of(2026, 8, 19, 10, 0)
+        val laterToday = AlarmEntity(id = 1, hour = 18, minute = 0, enabled = true)
+        val tomorrowMorning = AlarmEntity(id = 2, hour = 7, minute = 0, enabled = true)
+        val disabledSoon = AlarmEntity(id = 3, hour = 10, minute = 5, enabled = false)
+
+        val next = HomeViewModel.upcoming(listOf(laterToday, tomorrowMorning, disabledSoon), now)
+        assertEquals(18, next!!.hour)
+        assertEquals(0, next.minute)
+        assertEquals(now.toLocalDate(), next.triggerAt.toLocalDate())
     }
 }

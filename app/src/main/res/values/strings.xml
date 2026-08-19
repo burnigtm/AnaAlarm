@@ -36,6 +36,7 @@
     <string name="language_label">Language</string>
     <string name="language_en">English</string>
     <string name="language_pt">Português</string>
+    <string name="name_hint">Ana</string>
     <string name="habits_label">Habits to remind (comma separated)</string>
     <string name="habits_hint">water the plants, make coffee</string>
     <string name="interests_label">Your interests (comma separated)</string>
@@ -67,7 +68,11 @@
     <string name="ai_error">I could not reach the AI. Please check your API key and internet connection.</string>
     <string name="invalid_api_key">DeepSeek rejected the API key. Open Settings and paste a valid key from platform.deepseek.com.</string>
     <string name="ssl_error">Secure connection failed. Disable HTTPS inspection for api.deepseek.com or use a network without interception.</string>
-    <string name="network_error">Network error talking to DeepSeek. Check that the emulator/device has internet access.</string>
+    <string name="network_error">Network error talking to DeepSeek. Check that this device has internet access.</string>
+    <string name="notification_channel_alarms">Alarms</string>
+    <string name="notification_channel_alarms_desc">Wake-up alarm full-screen alerts</string>
+    <string name="notification_channel_session">Alarm session</string>
+    <string name="notification_channel_session_desc">Ongoing wake-up conversation</string>
     <string name="type_fallback_hint">Type your answer here (voice is unavailable)…</string>
     <string name="type_fallback_switch">I cannot hear you. Use the text box to answer.</string>
     <string name="type_instead">Type instead</string>

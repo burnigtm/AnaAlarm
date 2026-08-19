@@ -1,8 +1,26 @@
 # CI and installable APK builds
 
-AnaAlarm uses one GitHub Actions workflow, `.github/workflows/android.yml`. The workflow expands
-into four visible checks. Three are quality gates; the fourth creates a directly installable APK
-only after every quality gate passes on a trusted `main` build.
+**Decision:** Cursor Origin is the git source of truth. GitHub Actions
+(`.github/workflows/android.yml`) remains the only quality and signing runner until
+Origin has equivalent gates. Secrets stay on GitHub. Do not weaken the existing
+Host / API 26 / API 36 / installable-APK checks.
+
+AnaAlarm uses one GitHub Actions workflow on the **CI mirror**
+`github.com/burnigtm/AnaAlarm`. Actions do not run for commits that exist only on
+Origin (`https://origin.cursor.com/acidburn/AnaAlarm.git`). After pushing to
+Origin, also push the same commit to GitHub:
+
+```powershell
+.\scripts\push-ci-mirror.ps1
+```
+
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for remotes and the Windows/WSL Origin
+runbook. Play Store / `bundleRelease` is out of scope
+([PLAY_RELEASE_CHECKLIST.md](PLAY_RELEASE_CHECKLIST.md)).
+
+The workflow expands into four visible checks. Three are quality gates; the fourth
+creates a directly installable APK only after every quality gate passes on a trusted
+`main` build.
 
 ```text
 Host checks ---------+
@@ -126,7 +144,9 @@ downgrades.
 
 ## Download and install an APK
 
-1. Open the repository's **Actions** tab.
+These artifacts exist only on **GitHub Actions** (the CI mirror), not on Origin.
+
+1. Open the GitHub mirror’s **Actions** tab (`github.com/burnigtm/AnaAlarm`).
 2. Select **Android quality** and open the latest successful run on `main`.
 3. In **Artifacts**, download `anaalarm-installable-<run>-<attempt>`.
 4. Extract the downloaded ZIP. GitHub artifacts are ZIP archives; the APK inside is the file to
@@ -193,8 +213,9 @@ to match before it signs or uploads anything.
 
 ## Signing boundary and repository configuration
 
-The job uses the GitHub Environment named `internal-distribution`, restricted to the `main`
-branch. It needs these environment secrets:
+The job uses the GitHub Environment named `internal-distribution` on the **CI mirror**,
+restricted to the `main` branch. Origin has no copy of these secrets. It needs these
+environment secrets:
 
 | Name | Purpose |
 |---|---|
@@ -290,7 +311,8 @@ store password, so give `ANAALARM_INTERNAL_KEY_PASSWORD` the same value as
    $fingerprint
    ```
 
-5. Set the secrets. `gh secret set` prompts securely when no value flag or pipe is supplied:
+5. Set the secrets on the **GitHub CI mirror** (not Origin). `gh secret set` prompts securely
+   when no value flag or pipe is supplied. Replace `OWNER/REPO` with `burnigtm/AnaAlarm`:
 
    ```bash
    base64 < anaalarm-internal.p12 | tr -d '\n' | \

@@ -135,6 +135,8 @@ fun AlarmEditScreen(alarmId: Long, onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
+            if (!loaded) return@Column
+
             Text(
                 text = context.getString(R.string.time_label),
                 style = MaterialTheme.typography.titleMedium,
@@ -316,7 +318,7 @@ fun AlarmEditScreen(alarmId: Long, onBack: () -> Unit) {
                             }
                         }
                     },
-                    enabled = !saving,
+                    enabled = !saving && loaded,
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(context.getString(R.string.save))

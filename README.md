@@ -173,8 +173,10 @@ AnaAlarm/
 ├── gradle.properties             # JVM args, AndroidX flags, test-platform switches
 ├── gradlew / gradlew.bat         # Gradle wrapper (no global Gradle needed)
 ├── local.properties              # sdk.dir — machine specific, NOT committed
-├── .github/workflows/android.yml # Three quality checks plus the gated installable APK
+├── .github/workflows/android.yml # GitHub Actions CI/signing mirror (not Origin-native)
+├── CONTRIBUTING.md               # Origin-primary remotes, Windows/WSL Origin, CI mirror push
 ├── scripts/
+│   ├── push-ci-mirror.ps1          # Push HEAD to the GitHub Actions/signing mirror
 │   ├── run-instrumented-tests.ps1  # One-command Windows on-device test run
 │   └── ci/                         # Device, release-smoke, and internal APK verification helpers
 ├── docs/                         # Architecture, AI, alarms, localization, testing, troubleshooting
@@ -230,10 +232,23 @@ sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
 
 ### Clone
 
+**Cursor Origin is the source of truth.** GitHub is the CI and signing mirror.
+The Origin CLI is not supported on native Windows — use WSL. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for remotes, `origin auth login`, and
+`.\scripts\push-ci-mirror.ps1`.
+
+Clone from Origin (WSL after `origin auth login`):
+
 ```bash
-git clone https://github.com/burnigtm/AnaAlarm.git
+origin repo clone acidburn/AnaAlarm
 cd AnaAlarm
+git remote add github https://github.com/burnigtm/AnaAlarm.git
 ```
+
+Equivalent git URL: `https://origin.cursor.com/acidburn/AnaAlarm.git`.
+Repo page: https://cursor.com/codebase/acidburn/AnaAlarm.
+GitHub (`https://github.com/burnigtm/AnaAlarm.git`) is only the CI/signing
+mirror — add it as the `github` remote, not as `origin`.
 
 ### Debug build
 
@@ -266,8 +281,9 @@ Output: `app/build/outputs/apk/release/app-release-unsigned.apk`
 
 ### Ready-to-install CI build
 
-Successful trusted `main` runs can publish a signed, minified **AnaAlarm Internal** APK after the
-Host, API 26, and API 36 checks all pass and the signing environment's approval gate is satisfied.
+Successful trusted `main` runs **on the GitHub CI mirror** can publish a signed, minified
+**AnaAlarm Internal** APK after the Host, API 26, and API 36 checks all pass and the signing
+environment's approval gate is satisfied. Origin-only pushes do not produce that artifact.
 It uses the separate package `com.anaalarm.internal`, so it can coexist with a production
 installation. See
 [CI and installable APK builds](docs/CI_AND_INSTALLABLE_BUILDS.md) for download, checksum,
@@ -398,7 +414,12 @@ adb connect <phone-ip>:5555
 > Release minification is enabled. Keep the kotlinx-serialization and Retrofit rules in
 > `app/proguard-rules.pro`, and run a signed-release smoke test before shipping.
 
-### D. Play Store notes specific to this app
+### D. Play Store notes (out of scope)
+
+Google Play publishing is **not a current project goal**. `versionCode` is `1`, CI does not
+build an AAB, and [docs/PLAY_RELEASE_CHECKLIST.md](docs/PLAY_RELEASE_CHECKLIST.md) is parked
+until an owner explicitly revives it. The notes below are retained only so a future Play
+attempt does not start from zero.
 
 - **Alarm apps get privileged permissions, but you must justify them.** `SCHEDULE_EXACT_ALARM`
   and `USE_FULL_SCREEN_INTENT` both require a declaration in the Play Console explaining that
@@ -418,9 +439,15 @@ described above. Sign it before hosting it anywhere. Users must enable "Install 
 for their browser or file manager. Keep each package's signing key stable and backed up - Android
 refuses to update an app whose signature changed.
 
-For tester convenience, the GitHub workflow also publishes a separately signed
-`com.anaalarm.internal` APK. Its internal key must never be used for the production package or
-Google Play. See [docs/CI_AND_INSTALLABLE_BUILDS.md](docs/CI_AND_INSTALLABLE_BUILDS.md).
+For tester convenience, the **GitHub Actions** workflow on the CI mirror also publishes a
+separately signed `com.anaalarm.internal` APK. Origin pushes do not run that job until the
+same commit is pushed to GitHub (`.\scripts\push-ci-mirror.ps1`). Its internal key must never
+be used for the production package or Google Play. See
+[docs/CI_AND_INSTALLABLE_BUILDS.md](docs/CI_AND_INSTALLABLE_BUILDS.md).
+
+Play Store listing, Console declarations, and a production AAB are **out of scope** for
+current development (`versionCode` remains `1`). See
+[docs/PLAY_RELEASE_CHECKLIST.md](docs/PLAY_RELEASE_CHECKLIST.md).
 
 ## 10. First run and configuration
 
@@ -594,6 +621,8 @@ Longer explanations for each of these: [docs/TROUBLESHOOTING.md](docs/TROUBLESHO
 - **The DeepSeek Responses API is used statelessly.** `previous_response_id` and `conversation`
   are not supported in this integration, so the last 20 messages are re-sent on every turn. Long
   sessions therefore cost more per turn than a server-side-threaded API would.
+- **Google Play publishing is out of scope.** `versionCode` is `1`; the Play checklist is a
+  future owner task, not a current release path.
 - **The in-app language setting does not re-localize the interface.** It drives the TTS voice,
   the recognition language and the language Ana replies in. The UI itself follows the device
   language, using `values/` and `values-pt-rBR/`.
@@ -629,7 +658,8 @@ Longer explanations for each of these: [docs/TROUBLESHOOTING.md](docs/TROUBLESHO
 | [docs/ALARM_SYSTEM.md](docs/ALARM_SYSTEM.md) | Scheduling, permissions, receivers, per-Android-version caveats |
 | [docs/LOCALIZATION.md](docs/LOCALIZATION.md) | How languages work and how to add one |
 | [docs/TESTING.md](docs/TESTING.md) | Automated suites, how to run them, and the manual QA checklist |
-| [docs/CI_AND_INSTALLABLE_BUILDS.md](docs/CI_AND_INSTALLABLE_BUILDS.md) | All four GitHub checks plus APK download, install, signing, retention, and rotation |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Origin-primary remotes, GitHub CI mirror, Windows/WSL Origin CLI |
+| [docs/CI_AND_INSTALLABLE_BUILDS.md](docs/CI_AND_INSTALLABLE_BUILDS.md) | GitHub Actions gates, APK download, signing, mirroring from Origin |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Symptom-by-symptom fixes |
 | [docs/RELIABILITY_AND_LATENCY.md](docs/RELIABILITY_AND_LATENCY.md) | Reliability invariants, latency budget, telemetry, and deferred streaming work |
 | [docs/SUPPLY_CHAIN.md](docs/SUPPLY_CHAIN.md) | Strict dependency verification/locking and pinned CI-action maintenance |

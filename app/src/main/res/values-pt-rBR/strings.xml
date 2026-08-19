@@ -36,6 +36,7 @@
     <string name="language_label">Idioma</string>
     <string name="language_en">Inglês</string>
     <string name="language_pt">Português</string>
+    <string name="name_hint">Ana</string>
     <string name="habits_label">Hábitos para lembrar (separados por vírgula)</string>
     <string name="habits_hint">regar as plantas, fazer café</string>
     <string name="interests_label">Seus interesses (separados por vírgula)</string>
@@ -67,7 +68,11 @@
     <string name="ai_error">Não consegui falar com a IA. Verifique sua chave de API e a conexão com a internet.</string>
     <string name="invalid_api_key">A DeepSeek rejeitou a chave de API. Abra as Configurações e cole uma chave válida de platform.deepseek.com.</string>
     <string name="ssl_error">Falha na conexão segura. Desative a inspeção HTTPS para api.deepseek.com ou use uma rede sem interceptação.</string>
-    <string name="network_error">Erro de rede ao falar com a DeepSeek. Verifique se o emulador/dispositivo tem internet.</string>
+    <string name="network_error">Erro de rede ao falar com a DeepSeek. Verifique se este dispositivo tem internet.</string>
+    <string name="notification_channel_alarms">Alarmes</string>
+    <string name="notification_channel_alarms_desc">Alertas de alarme em tela cheia</string>
+    <string name="notification_channel_session">Sessão de alarme</string>
+    <string name="notification_channel_session_desc">Conversa matinal em andamento</string>
     <string name="type_fallback_hint">Digite sua resposta aqui (voz indisponível)…</string>
     <string name="type_fallback_switch">Não estou te ouvindo. Use a caixa de texto para responder.</string>
     <string name="type_instead">Digitar</string>

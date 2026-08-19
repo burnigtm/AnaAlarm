@@ -62,7 +62,9 @@ Linux and CI use the equivalent helper (the API argument enables capability-awar
 bash scripts/ci/run-instrumented-tests.sh 36
 ```
 
-GitHub Actions exposes three quality checks plus one gated distribution check. Host checks run
+GitHub Actions on the **CI mirror** exposes three quality checks plus one gated distribution
+check. Origin pushes do not run them until the same commit is pushed to GitHub
+(`.\scripts\push-ci-mirror.ps1`). Host checks run
 unit tests, compile Android tests, build debug and minified release APKs, and lint every variant.
 They also build the internal variant and rehearse the real packaging/verifier with a disposable
 one-day key, so pull requests test the distribution path without receiving the stable key.
@@ -223,7 +225,8 @@ release, ideally spanning a real night.
 - [ ] App opens to Home with the warm morning theme and the "AnaAlarm" top bar.
 - [ ] Notification permission prompt appears (Android 13+).
 - [ ] Microphone permission prompt appears.
-- [ ] Home shows "No alarm set" when the list is empty.
+- [ ] Home shows a **Next alarm** card when at least one alarm is enabled, and hides it when
+      the list is empty or every alarm is disabled.
 - [ ] With exact-alarm permission missing, the warning card appears, **Grant permission** opens
       the system screen, and the card disappears when the app resumes after granting.
 - [ ] On Android 14+, the full-screen-intent card behaves the same way.

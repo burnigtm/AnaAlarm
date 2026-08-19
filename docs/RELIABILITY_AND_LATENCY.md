@@ -1,10 +1,8 @@
 # Reliability and latency design
 
-This document records the production invariants introduced by the reliability hardening work in
-[issue #2](https://github.com/burnigtm/AnaAlarm/issues/2),
-[issue #3](https://github.com/burnigtm/AnaAlarm/issues/3),
-[issue #4](https://github.com/burnigtm/AnaAlarm/issues/4), and
-[issue #5](https://github.com/burnigtm/AnaAlarm/issues/5).
+This document records the production invariants introduced by the reliability hardening work.
+(Historical tracking on the GitHub CI mirror: issues 2–5. Origin is the source of truth now;
+do not treat those GitHub issue URLs as the project home.)
 
 ## Alarm delivery invariants
 

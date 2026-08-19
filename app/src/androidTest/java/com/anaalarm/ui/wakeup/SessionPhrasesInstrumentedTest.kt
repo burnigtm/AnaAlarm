@@ -54,7 +54,11 @@ class SessionPhrasesInstrumentedTest {
             "good morning",
             "I slept well",
             "eu dormi bem",
-            "what is the plan for today"
+            "what is the plan for today",
+            "vou para o trabalho",
+            "I haven't done my stretches",
+            "I don't want to get up",
+            "please don't stop talking"
         ).forEach { phrase ->
             assertFalse("'$phrase' should not end the session", SessionPhrases.isStopPhrase(phrase))
         }

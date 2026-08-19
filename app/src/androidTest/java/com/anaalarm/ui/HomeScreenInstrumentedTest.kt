@@ -97,6 +97,7 @@ class HomeScreenInstrumentedTest {
 
         compose.awaitText("06:45")
         compose.onNodeWithText("06:45").assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.next_alarm)).assertIsDisplayed()
         compose.onNodeWithText(str(R.string.no_alarm)).assertDoesNotExist()
     }
 
@@ -204,6 +205,7 @@ class HomeScreenInstrumentedTest {
 
         compose.awaitText(str(R.string.home_title))
         compose.onNodeWithText(str(R.string.home_title)).assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.next_alarm)).assertDoesNotExist()
     }
 
     @Test

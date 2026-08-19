@@ -30,6 +30,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +39,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,14 +57,14 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.anaalarm.AnaAlarmApp
 import com.anaalarm.R
+import com.anaalarm.alarm.AlarmScheduleResult
+import com.anaalarm.alarm.AlarmTriggerCalculator
 import com.anaalarm.alarm.Notifications
 import com.anaalarm.data.AlarmEntity
 import com.anaalarm.ui.wakeup.WakeUpActivity
-import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,6 +79,21 @@ fun HomeScreen(
     val app = context.applicationContext as AnaAlarmApp
     val vm: HomeViewModel = viewModel { HomeViewModel(app.memoryStore, app.alarmScheduler) }
     val alarms by vm.alarms.collectAsState()
+    val upcoming by vm.upcomingAlarm.collectAsState()
+    val snackbar = remember { SnackbarHostState() }
+
+    LaunchedEffect(vm) {
+        vm.notices.collect { notice ->
+            val message = when (notice) {
+                is HomeNotice.ScheduleFailed -> when (notice.reason) {
+                    AlarmScheduleResult.Failed.Reason.EXACT_ALARM_PERMISSION_REQUIRED ->
+                        context.getString(R.string.perm_alarm_denied)
+                    else -> context.getString(R.string.alarm_schedule_failed)
+                }
+            }
+            snackbar.showSnackbar(message)
+        }
+    }
 
     val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
     fun hasExactAlarmPermission(): Boolean =
@@ -119,7 +137,8 @@ fun HomeScreen(
             FloatingActionButton(onClick = onAddAlarm) {
                 Icon(Icons.Default.Add, contentDescription = context.getString(R.string.add_alarm))
             }
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbar) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -147,6 +166,31 @@ fun HomeScreen(
                     message = context.getString(R.string.perm_fullscreen_denied),
                     onRequest = onRequestFullScreenPermission
                 )
+                Spacer(Modifier.height(12.dp))
+            }
+
+            upcoming?.let { next ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = context.getString(R.string.next_alarm),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = formatUpcoming(context, next),
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
                 Spacer(Modifier.height(12.dp))
             }
 
@@ -281,7 +325,7 @@ private fun AlarmCard(
                 )
                 if (alarm.days != 0) {
                     Text(
-                        text = formatDays(alarm.days),
+                        text = formatDays(context, alarm.days),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -303,9 +347,31 @@ private fun AlarmCard(
 private fun formatTime(hour: Int, minute: Int): String =
     LocalTime.of(hour, minute).format(DateTimeFormatter.ofPattern("HH:mm"))
 
-private fun formatDays(days: Int): String {
-    val dayLabels = DayOfWeek.entries.map { it.getDisplayName(TextStyle.SHORT, Locale.getDefault()) }
-    val active = (0..6).filter { (days and (1 shl it)) != 0 }
-        .map { dayLabels[(it + 6) % 7] } // bit0 = Sunday
-    return active.joinToString(" ")
+private val DAY_LABELS = intArrayOf(
+    R.string.day_sun,
+    R.string.day_mon,
+    R.string.day_tue,
+    R.string.day_wed,
+    R.string.day_thu,
+    R.string.day_fri,
+    R.string.day_sat
+)
+
+private fun formatDays(context: Context, days: Int): String =
+    (0..6).filter { (days and (1 shl it)) != 0 }
+        .joinToString(" ") { context.getString(DAY_LABELS[it]) }
+
+private fun formatUpcoming(context: Context, upcoming: UpcomingAlarm): String {
+    val timeStr = formatTime(upcoming.hour, upcoming.minute)
+    val today = LocalDate.now()
+    val date = upcoming.triggerAt.toLocalDate()
+    return when {
+        date == today -> context.getString(R.string.alarm_scheduled_today, timeStr)
+        date == today.plusDays(1) -> context.getString(R.string.alarm_scheduled_tomorrow, timeStr)
+        else -> context.getString(
+            R.string.alarm_scheduled_day,
+            context.getString(DAY_LABELS[AlarmTriggerCalculator.dayBit(upcoming.triggerAt.dayOfWeek)]),
+            timeStr
+        )
+    }
 }

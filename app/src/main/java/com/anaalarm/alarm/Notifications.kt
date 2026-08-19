@@ -6,6 +6,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
+import com.anaalarm.R
 
 object Notifications {
     /** Bumped so devices pick up the stronger alarm channel attributes. */
@@ -23,9 +24,15 @@ object Notifications {
         // Remove legacy channel that lacked alarm audio / bypass-DND settings.
         runCatching { manager.deleteNotificationChannel("alarm_channel") }
 
-        createSilentChannel(manager)
+        createSilentChannel(context, manager)
 
-        if (manager.getNotificationChannel(CHANNEL_ID) != null) return
+        val existing = manager.getNotificationChannel(CHANNEL_ID)
+        if (existing != null) {
+            existing.name = context.getString(R.string.notification_channel_alarms)
+            existing.description = context.getString(R.string.notification_channel_alarms_desc)
+            manager.createNotificationChannel(existing)
+            return
+        }
 
         val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
@@ -36,10 +43,10 @@ object Notifications {
 
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Alarms",
+            context.getString(R.string.notification_channel_alarms),
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "Wake-up alarm full-screen alerts"
+            description = context.getString(R.string.notification_channel_alarms_desc)
             enableVibration(true)
             setBypassDnd(true)
             lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
@@ -48,14 +55,20 @@ object Notifications {
         manager.createNotificationChannel(channel)
     }
 
-    private fun createSilentChannel(manager: NotificationManager) {
-        if (manager.getNotificationChannel(SILENT_CHANNEL_ID) != null) return
+    private fun createSilentChannel(context: Context, manager: NotificationManager) {
+        val existing = manager.getNotificationChannel(SILENT_CHANNEL_ID)
+        if (existing != null) {
+            existing.name = context.getString(R.string.notification_channel_session)
+            existing.description = context.getString(R.string.notification_channel_session_desc)
+            manager.createNotificationChannel(existing)
+            return
+        }
         val channel = NotificationChannel(
             SILENT_CHANNEL_ID,
-            "Alarm session",
+            context.getString(R.string.notification_channel_session),
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Ongoing wake-up conversation"
+            description = context.getString(R.string.notification_channel_session_desc)
             enableVibration(false)
             setSound(null, null)
             lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
