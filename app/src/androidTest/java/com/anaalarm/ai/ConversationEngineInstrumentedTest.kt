@@ -155,8 +155,18 @@ class ConversationEngineInstrumentedTest {
         val farewell = engine.wrapUp()
 
         assertEquals("Time to get up, have a great day!", farewell)
+        // Phase-1 contract: the farewell carries the bounded history, so the end prompt is the
+        // final turn after the synthetic greeting and the assistant reply.
         val turns = lastRequestBody().getJSONArray("input")
-        assertEquals(PromptBuilder.buildEndPrompt(), turns.getJSONObject(0).getString("content"))
+        assertEquals(3, turns.length())
+        assertEquals(
+            "Please begin the wake-up greeting now.",
+            turns.getJSONObject(0).getString("content")
+        )
+        assertEquals(
+            PromptBuilder.buildEndPrompt(),
+            turns.getJSONObject(2).getString("content")
+        )
     }
 
     @Test
