@@ -95,15 +95,13 @@ class AlarmService : Service() {
             return START_NOT_STICKY
         }
 
-        // A stop queued while this start was still in flight applies only to its own alarm,
+        // A stop queued while this start was still in flight applies only to this exact alarm,
         // and only within a short window: it exists to win the race against a start command
         // that was already enqueued, never to suppress a genuinely fresh delivery later.
         val pendingStop = pendingStopForAlarmId
         val stopStillFresh =
             SystemClock.elapsedRealtime() - pendingStopAtElapsedMs <= STOP_VALIDITY_MS
-        if (pendingStop != NO_PENDING_STOP && stopStillFresh &&
-            (pendingStop == -1L || pendingStop == alarmId)
-        ) {
+        if (pendingStop != NO_PENDING_STOP && stopStillFresh && pendingStop == alarmId) {
             pendingStopForAlarmId = NO_PENDING_STOP
             stopAlarm()
             return START_NOT_STICKY
@@ -122,6 +120,7 @@ class AlarmService : Service() {
         val alreadyRunning = audioAlreadyActive && activeAlarmId == alarmId
         activeAlarmId = alarmId
         activeNotificationId = notificationId
+        lastStartedAlarmId = alarmId
         if (!alreadyRunning) {
             val deliveredAtNanos =
                 intent?.getLongExtra(EXTRA_DELIVERY_STARTED_NANOS, 0L) ?: 0L
@@ -474,13 +473,18 @@ class AlarmService : Service() {
 
         /**
          * Alarm id whose delivery should be suppressed if its start command is still queued.
-         * [-1] matches any alarm (legacy behavior for sessions without a concrete id).
+         * Always a concrete id: [-1] callers are resolved against [lastStartedAlarmId] so a
+         * queued stop can never match an unrelated future alarm.
          */
         @Volatile
         private var pendingStopForAlarmId: Long = NO_PENDING_STOP
 
         @Volatile
         private var pendingStopAtElapsedMs: Long = 0L
+
+        /** Most recent alarm id this service actually started ringing for. */
+        @Volatile
+        private var lastStartedAlarmId: Long = NO_PENDING_STOP
 
         @Volatile
         private var fallbackActiveForTest = false
@@ -526,8 +530,14 @@ class AlarmService : Service() {
          */
         @SuppressLint("ImplicitSamInstance")
         fun stop(context: Context, alarmId: Long = -1L) {
-            pendingStopForAlarmId = alarmId
-            pendingStopAtElapsedMs = SystemClock.elapsedRealtime()
+            // Resolve the legacy "any alarm" request against whatever this process last rang
+            // for, so every queued stop is exact-id scoped and can never suppress an unrelated
+            // future delivery. When nothing has run yet there is nothing to queue.
+            val effective = if (alarmId >= 0L) alarmId else lastStartedAlarmId
+            if (effective != NO_PENDING_STOP) {
+                pendingStopForAlarmId = effective
+                pendingStopAtElapsedMs = SystemClock.elapsedRealtime()
+            }
             context.stopService(Intent(context, AlarmService::class.java))
         }
 

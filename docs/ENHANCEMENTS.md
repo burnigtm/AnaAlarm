@@ -142,11 +142,13 @@ Two interactions between program changes surfaced in the on-device suite
    on `ending`) and violating the invariant that only explicit user action ends a failed
    wake-up. The farewell now speaks (its audible start still silences the alarm) and then only
    marks the conversation ended — Stop/Snooze remain available and functional.
-2. **Queued service stops are time-boxed.** The per-alarm stop scoping left an unscoped `[-1]`
-   stop request alive indefinitely; any later delivery of any alarm could be suppressed,
-   producing `ForegroundServiceDidNotStartInTimeException`. A queued stop now applies only
-   within 15 seconds of being requested — ample for its original start/stop race, harmless when
-   stale.
+2. **Queued service stops are exact-id scoped and time-boxed.** The per-alarm stop scoping
+   initially kept an unscoped `[-1]` stop request alive indefinitely, and a first fix's 15-second
+   window still let teardown stops suppress the next test's fresh delivery. Final design: a `[-1]`
+   stop resolves against the service's last-started alarm id, every queued stop matches exactly
+   one alarm, honors are gated to 15 seconds, and — critically — the service always calls
+   `startForeground()` before any stop handling, because skipping it crashes the process with
+   `ForegroundServiceDidNotStartInTimeException` under the `startForegroundService()` contract.
 
 ## Deferred intentionally
 
