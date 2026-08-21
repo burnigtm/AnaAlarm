@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
@@ -188,7 +189,7 @@ class HomeScreenInstrumentedTest {
         compose.onNodeWithText(str(R.string.repeat_days)).assertIsDisplayed()
         compose.onNodeWithText(str(R.string.snooze_label)).assertIsDisplayed()
 
-        compose.onNodeWithText(str(R.string.cancel)).performClick()
+        compose.onNodeWithText(str(R.string.cancel)).performScrollTo().performClick()
 
         compose.awaitText(str(R.string.no_alarm))
         assertTrue(runBlocking { TestEnv.app.memoryStore.getEnabledAlarms() }.isEmpty())
@@ -218,3 +219,4 @@ class HomeScreenInstrumentedTest {
         assertFalse(storedAlarm(id)!!.enabled)
     }
 }
+
