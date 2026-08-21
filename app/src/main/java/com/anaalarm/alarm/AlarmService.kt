@@ -72,6 +72,22 @@ class AlarmService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val alarmId = intent?.getLongExtra(AlarmReceiver.EXTRA_ALARM_ID, -1L) ?: -1L
+        val notificationId =
+            Notifications.ALARM_NOTIFICATION_ID_BASE + alarmId.toInt().coerceAtLeast(0)
+
+        // The service is always launched with startForegroundService(), so startForeground()
+        // must happen unconditionally and first — including stop/invalid-id paths. Skipping it
+        // crashes the process with ForegroundServiceDidNotStartInTimeException on API 26+.
+        val contentPending = if (alarmId >= 0L) {
+            activityPendingIntent(alarmId.toInt() + 10_000, alarmId)
+        } else {
+            activityPendingIntent(0, -1L)
+        }
+        val previousNotificationId = activeNotificationId
+        startAsForeground(notificationId, buildSessionNotification(this, contentPending))
+        if (previousNotificationId >= 0 && previousNotificationId != notificationId) {
+            NotificationManagerCompat.from(this).cancel(previousNotificationId)
+        }
 
         if (intent?.action == ACTION_STOP) {
             pendingStopForAlarmId = NO_PENDING_STOP
@@ -98,17 +114,9 @@ class AlarmService : Service() {
             stopSelf(startId)
             return START_NOT_STICKY
         }
-        val notificationId =
-            Notifications.ALARM_NOTIFICATION_ID_BASE + alarmId.toInt().coerceAtLeast(0)
 
         val fullScreenPending = activityPendingIntent(alarmId.toInt(), alarmId)
-        val contentPending = activityPendingIntent(alarmId.toInt() + 10_000, alarmId)
-
-        val previousNotificationId = activeNotificationId
-        startAsForeground(notificationId, buildSessionNotification(this, contentPending))
-        if (previousNotificationId >= 0 && previousNotificationId != notificationId) {
-            NotificationManagerCompat.from(this).cancel(previousNotificationId)
-        }
+        val fullContentPending = contentPending
 
         val audioAlreadyActive = fallbackActive
         val alreadyRunning = audioAlreadyActive && activeAlarmId == alarmId
@@ -135,7 +143,7 @@ class AlarmService : Service() {
             runCatching {
                 NotificationManagerCompat.from(this).notify(
                     notificationId,
-                    buildAlarmNotification(this, fullScreenPending, contentPending)
+                    buildAlarmNotification(this, fullScreenPending, fullContentPending)
                 )
             }.onFailure { Log.w(TAG, "Unable to publish full-screen alarm notification", it) }
         } else {
