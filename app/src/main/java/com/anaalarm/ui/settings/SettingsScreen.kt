@@ -427,9 +427,10 @@ fun SettingsScreen(onBack: () -> Unit) {
                             voiceRate = voiceRate
                         )
                         app.ttsManager.setLanguage(language)
-                        // Android 13+: the interface itself follows the chosen language.
-                        com.anaalarm.ui.AppLocales.apply(language, context)
                         snackbar.showSnackbar(context.getString(R.string.settings_saved))
+                        // Android 13+: applying a new per-app locale recreates this activity so
+                        // the interface relabels — deliberately last, after the confirmation.
+                        com.anaalarm.ui.AppLocales.apply(language, context)
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
