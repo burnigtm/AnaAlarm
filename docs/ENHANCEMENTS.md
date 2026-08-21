@@ -143,7 +143,9 @@ Two interactions between program changes surfaced in the on-device suite
    pressed around it). Final design: the farewell is spoken only when TTS already produced audio
    this session (`everSpoken` gate); its audible start still silences the alarm per invariant 5,
    completion only marks the conversation ENDED, and Stop/Snooze remain available. Cold-start
-   failures keep the original ring-until-explicit-action behavior.
+   failures keep the original ring-until-explicit-action behavior. Related: Phase 5's
+   `requestStop()` initially guarded on `ended`, which bricked the Stop button on exactly those
+   ended-but-open screens; the explicit stop path now bypasses that guard.
 2. **Queued service stops are exact-id scoped and time-boxed.** The per-alarm stop scoping
    initially kept an unscoped `[-1]` stop request alive indefinitely, and a first fix's 15-second
    window still let teardown stops suppress the next test's fresh delivery. Final design: a `[-1]`

@@ -478,10 +478,16 @@ class SessionController(
 
     /**
      * Stop-button entry point: alarms configured with a dismissal challenge must prove the
-     * user is awake first. Test sessions (no alarm id) always stop immediately.
+     * user is awake first. Test sessions (no alarm id) always stop immediately. An already-
+     * ended session (e.g. after a cold-start AI failure) must still be dismissible, so the
+     * explicit path bypasses the ended guard — the screen would otherwise be stuck open.
      */
     fun requestStop() {
-        if (ended || ending || disposed) return
+        if (disposed) return
+        if (ended || ending || stopChallengeType == DismissalChallenges.Type.NONE) {
+            stopNow()
+            return
+        }
         when (stopChallengeType) {
             DismissalChallenges.Type.MATH -> {
                 activeChallenge = StopChallengeUi(
@@ -496,7 +502,7 @@ class SessionController(
                     showingCode = true
                 )
             }
-            DismissalChallenges.Type.NONE -> stopNow()
+            else -> stopNow()
         }
     }
 
