@@ -137,11 +137,13 @@ prompt/latency/home suites. Environment note: unit-test JVM args now include
 Two interactions between program changes surfaced in the on-device suite
 (`AlarmFiringInstrumentedTest.snoozeStillWorksAfterAiFailureAndStopsTheFallback`, API 26 + 36):
 
-1. **Offline farewell no longer self-closes the session.** Phase 4's spoken farewell finished
-   the activity automatically, silently dropping a Snooze pressed around it (`snoozeNow` guards
-   on `ending`) and violating the invariant that only explicit user action ends a failed
-   wake-up. The farewell now speaks (its audible start still silences the alarm) and then only
-   marks the conversation ended — Stop/Snooze remain available and functional.
+1. **Offline farewell only after audible speech; session stays open.** Phase 4's spoken farewell
+   originally fired on every AI failure — including a cold-start missing-key failure, where it
+   silenced the alarm before any user action and auto-finished the activity (dropping a Snooze
+   pressed around it). Final design: the farewell is spoken only when TTS already produced audio
+   this session (`everSpoken` gate); its audible start still silences the alarm per invariant 5,
+   completion only marks the conversation ENDED, and Stop/Snooze remain available. Cold-start
+   failures keep the original ring-until-explicit-action behavior.
 2. **Queued service stops are exact-id scoped and time-boxed.** The per-alarm stop scoping
    initially kept an unscoped `[-1]` stop request alive indefinitely, and a first fix's 15-second
    window still let teardown stops suppress the next test's fresh delivery. Final design: a `[-1]`

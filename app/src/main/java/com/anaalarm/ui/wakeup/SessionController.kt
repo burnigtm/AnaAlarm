@@ -72,6 +72,8 @@ class SessionController(
     private var streamingEnabled = false
     private var stopChallengeType = DismissalChallenges.Type.NONE
     private var memoryCode: String? = null
+    /** True once TTS produced audible output this session; gates the offline farewell. */
+    private var everSpoken = false
     private val sessionStart = SystemClock.elapsedRealtime()
     private var started = false
     private var ended = false
@@ -244,6 +246,7 @@ class SessionController(
             onStart = {
                 if (generation != ttsGeneration || ended || disposed) return@speak
                 startedAudibly = true
+                everSpoken = true
                 stopAlarmFallback()
             },
             completion = {
@@ -356,7 +359,7 @@ class SessionController(
         val coordinator = StreamingTurnCoordinator(
             turnId = StreamingTurnCoordinator.nextTurnId(),
             ttsManager = app.ttsManager,
-            onFirstPhraseAudioStarted = { stopAlarmFallback() }
+            onFirstPhraseAudioStarted = { everSpoken = true; stopAlarmFallback() }
         )
         activeCoordinator = coordinator
         try {
@@ -440,7 +443,7 @@ class SessionController(
         app.ttsManager.speak(
             text = app.getString(R.string.type_fallback_switch),
             onStart = {
-                if (generation == ttsGeneration && !ended && !disposed) stopAlarmFallback()
+                if (generation == ttsGeneration && !ended && !disposed) { everSpoken = true; stopAlarmFallback() }
             },
             completion = {
                 if (generation == ttsGeneration && !ended && !ending && !disposed) {
@@ -596,7 +599,7 @@ class SessionController(
         app.ttsManager.speak(
             text = text,
             onStart = {
-                if (generation == ttsGeneration && !ended && !disposed) stopAlarmFallback()
+                if (generation == ttsGeneration && !ended && !disposed) { everSpoken = true; stopAlarmFallback() }
             },
             completion = {
                 if (generation == ttsGeneration && !ended && !disposed) {
@@ -622,10 +625,11 @@ class SessionController(
             e is ApiException && e.message == "network error" -> app.getString(R.string.network_error)
             else -> app.getString(R.string.ai_error)
         }
-        if (app.ttsManager.isReady) {
-            // Speak a localized wrap-up instead of failing silently. The audible start silences
-            // the alarm (invariant 5); completion only marks the conversation ended — the wake
-            // screen stays open so the user explicitly chooses Stop or Snooze afterwards.
+        if (app.ttsManager.isReady && everSpoken) {
+            // The conversation already produced audible speech, so a localized spoken wrap-up
+            // fits naturally. Its audible start silences the alarm (invariant 5); completion
+            // only marks the conversation ended — Stop/Snooze stay available. A cold-start
+            // failure (never spoken, e.g. missing key) keeps the alarm ringing instead.
             speakOfflineFarewell()
         } else {
             // Keep the independent alarm service ringing. Only audible TTS or an explicit user
@@ -725,3 +729,4 @@ class SessionController(
 
     private fun isTimeUp(): Boolean = SystemClock.elapsedRealtime() - sessionStart >= sessionMs
 }
+
