@@ -132,6 +132,22 @@ New suites: `SseParserTest`, `ResponsesStreamDecoderTest`, `PhraseSegmenterTest`
 prompt/latency/home suites. Environment note: unit-test JVM args now include
 `-Djdk.attach.allowAttachSelf=true` so MockK works on JDK 21 hosts (CI's Temurin 17 unaffected).
 
+## CI follow-up fixes (instrumented-suite regressions caught by GitHub Actions)
+
+Two interactions between program changes surfaced in the on-device suite
+(`AlarmFiringInstrumentedTest.snoozeStillWorksAfterAiFailureAndStopsTheFallback`, API 26 + 36):
+
+1. **Offline farewell no longer self-closes the session.** Phase 4's spoken farewell finished
+   the activity automatically, silently dropping a Snooze pressed around it (`snoozeNow` guards
+   on `ending`) and violating the invariant that only explicit user action ends a failed
+   wake-up. The farewell now speaks (its audible start still silences the alarm) and then only
+   marks the conversation ended — Stop/Snooze remain available and functional.
+2. **Queued service stops are time-boxed.** The per-alarm stop scoping left an unscoped `[-1]`
+   stop request alive indefinitely; any later delivery of any alarm could be suppressed,
+   producing `ForegroundServiceDidNotStartInTimeException`. A queued stop now applies only
+   within 15 seconds of being requested — ample for its original start/stop race, harmless when
+   stale.
+
 ## Deferred intentionally
 
 - "Talk to Ana anytime" free-chat entry point (largest UI surface, least alarm value).

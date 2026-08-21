@@ -623,9 +623,9 @@ class SessionController(
             else -> app.getString(R.string.ai_error)
         }
         if (app.ttsManager.isReady) {
-            // A working voice turns an AI failure into a spoken early wrap-up instead of a
-            // silent screen: the farewell's audible start silences the alarm (invariant 5) and
-            // the session then closes through the explicit terminal path.
+            // Speak a localized wrap-up instead of failing silently. The audible start silences
+            // the alarm (invariant 5); completion only marks the conversation ended — the wake
+            // screen stays open so the user explicitly chooses Stop or Snooze afterwards.
             speakOfflineFarewell()
         } else {
             // Keep the independent alarm service ringing. Only audible TTS or an explicit user
@@ -635,7 +635,6 @@ class SessionController(
     }
 
     private fun speakOfflineFarewell() {
-        ending = true
         status = SessionStatus.SPEAKING
         val generation = ++ttsGeneration
         app.ttsManager.speak(
@@ -645,7 +644,7 @@ class SessionController(
             },
             completion = {
                 if (generation == ttsGeneration && !ended && !disposed) {
-                    terminateSession(finishActivity = true)
+                    transitionToEnded()
                 }
             }
         )

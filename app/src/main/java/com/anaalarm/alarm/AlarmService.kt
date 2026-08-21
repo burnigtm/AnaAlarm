@@ -21,6 +21,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -78,10 +79,15 @@ class AlarmService : Service() {
             return START_NOT_STICKY
         }
 
-        // A stop queued while this start was still in flight applies only to its own alarm;
-        // a different alarm's delivery must survive it.
+        // A stop queued while this start was still in flight applies only to its own alarm,
+        // and only within a short window: it exists to win the race against a start command
+        // that was already enqueued, never to suppress a genuinely fresh delivery later.
         val pendingStop = pendingStopForAlarmId
-        if (pendingStop != NO_PENDING_STOP && (pendingStop == -1L || pendingStop == alarmId)) {
+        val stopStillFresh =
+            SystemClock.elapsedRealtime() - pendingStopAtElapsedMs <= STOP_VALIDITY_MS
+        if (pendingStop != NO_PENDING_STOP && stopStillFresh &&
+            (pendingStop == -1L || pendingStop == alarmId)
+        ) {
             pendingStopForAlarmId = NO_PENDING_STOP
             stopAlarm()
             return START_NOT_STICKY
@@ -452,11 +458,21 @@ class AlarmService : Service() {
         private const val NO_PENDING_STOP = Long.MIN_VALUE
 
         /**
+         * How long a queued stop may suppress a matching start. Covers the original race
+         * (stop pressed just before the service finished starting) while guaranteeing a stale
+         * request can never silence a genuinely fresh delivery minutes/hours later.
+         */
+        private const val STOP_VALIDITY_MS = 15_000L
+
+        /**
          * Alarm id whose delivery should be suppressed if its start command is still queued.
          * [-1] matches any alarm (legacy behavior for sessions without a concrete id).
          */
         @Volatile
         private var pendingStopForAlarmId: Long = NO_PENDING_STOP
+
+        @Volatile
+        private var pendingStopAtElapsedMs: Long = 0L
 
         @Volatile
         private var fallbackActiveForTest = false
@@ -503,6 +519,7 @@ class AlarmService : Service() {
         @SuppressLint("ImplicitSamInstance")
         fun stop(context: Context, alarmId: Long = -1L) {
             pendingStopForAlarmId = alarmId
+            pendingStopAtElapsedMs = SystemClock.elapsedRealtime()
             context.stopService(Intent(context, AlarmService::class.java))
         }
 
