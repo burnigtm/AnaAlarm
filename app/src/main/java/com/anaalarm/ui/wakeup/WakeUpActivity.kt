@@ -117,7 +117,7 @@ class WakeUpActivity : ComponentActivity() {
                     snoozeMinutes = snoozeMinutes,
                     onSnooze = { snoozeDirectBootAlarm(alarmId) },
                     onStop = {
-                        AlarmService.stop(applicationContext)
+                        AlarmService.stop(applicationContext, alarmId)
                         finish()
                     }
                 )
@@ -137,7 +137,7 @@ class WakeUpActivity : ComponentActivity() {
             )
         }
         if (result !is AlarmScheduleResult.Scheduled) return false
-        AlarmService.stop(applicationContext)
+        AlarmService.stop(applicationContext, alarmId)
         finish()
         return true
     }

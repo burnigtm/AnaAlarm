@@ -113,9 +113,11 @@ response IDs, and API-key characters must never be logged.
   or hostname verification. Debug cleartext is limited to loopback for MockWebServer tests.
 - API credentials are AES-GCM encrypted with an Android Keystore key before DataStore writes.
 - App backup is disabled; DataStore and Room are also excluded from cloud backup/device transfer.
-- Room migrations are explicit through version 4, schemas are exported, message history is
+- Room migrations are explicit through version 5, schemas are exported, message history is
   indexed by `(sessionId, timestamp)`, retention has a timestamp-only index, and raw abandoned
-  messages are pruned after seven days.
+  messages are pruned after seven days. Version 5 adds the `usage` token ledger (pruned after
+  90 days) and completed-`session_records` statistics; usage rows store only counts and dates,
+  never prompt or transcript content.
 
 ## Verification gates
 
@@ -132,6 +134,14 @@ Before a release, also run the on-device suite and manual locked-screen checks d
 snooze, reboot, time-zone change, and exact-alarm-revocation scenarios.
 
 ## Responses streaming and phrase-level TTS overlap
+
+**Status: implemented, disabled by default.** The design below is live in
+`com.anaalarm.ai.stream` (`SseParser`, `ResponsesStreamDecoder`, `PhraseSegmenter`,
+`StreamingTurnCoordinator`) plus `DeepSeekClient.streamRespond`, the ordered-registry QUEUE_ADD
+path in `TtsManager`, and `ConversationEngine.respondStreaming`. It is gated by the
+`streamingEnabled` setting (`false` by default); when the flag is off, or when a stream fails
+before its first audible phrase, the session uses the original bounded non-streaming request.
+The provider contract notes that follow remain the reference for that implementation.
 
 The provider contract now makes a safe streaming design possible, but it should be implemented as
 a separate, fixture-tested change rather than by changing `stream` to `true` on the current

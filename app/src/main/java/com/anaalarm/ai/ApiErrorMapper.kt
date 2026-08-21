@@ -14,6 +14,7 @@ object ApiErrorMapper {
             is HttpException -> {
                 val code = error.code()
                 if (code == 401 || code == 403) return ApiException("invalid api key")
+                if (code == 429) return ApiException("rate limited")
                 return ApiException("HTTP $code")
             }
             is SSLHandshakeException,

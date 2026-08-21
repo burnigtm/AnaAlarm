@@ -7,6 +7,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import com.anaalarm.AnaAlarmApp
 import com.anaalarm.data.AlarmEntity
 import com.anaalarm.ui.wakeup.WakeUpActivity
@@ -32,6 +33,7 @@ sealed interface AlarmScheduleResult {
             EXACT_ALARM_PERMISSION_REQUIRED,
             ALARM_NOT_FOUND,
             INVALID_ALARM,
+            SNOOZE_LIMIT_REACHED,
             SYSTEM_ERROR
         }
     }
@@ -143,13 +145,25 @@ class AlarmScheduler(
                 AlarmScheduleResult.Failed.Reason.INVALID_ALARM
             )
         }
+        if (!canSnooze(alarm.id)) {
+            return AlarmScheduleResult.Failed(
+                AlarmScheduleResult.Failed.Reason.SNOOZE_LIMIT_REACHED
+            )
+        }
         if (!canScheduleExact()) {
             return AlarmScheduleResult.Failed(
                 AlarmScheduleResult.Failed.Reason.EXACT_ALARM_PERMISSION_REQUIRED
             )
         }
         val triggerAt = now.plusMinutes(alarm.snoozeMinutes.toLong())
-        return registerExactAlarm(alarm.id, triggerAt) { snoozePendingIntent(alarm.id) }
+        val result = registerExactAlarm(alarm.id, triggerAt) { snoozePendingIntent(alarm.id) }
+        // The counter lives in the device-protected mirror so caps survive reboots and are
+        // enforced identically before and after first unlock.
+        if (result is AlarmScheduleResult.Scheduled) {
+            runCatching { directBootStore.incrementSnoozeCount(alarm.id) }
+                .onFailure { Log.w(TAG, "Snooze counter update failed for ${alarm.id}", it) }
+        }
+        return result
     }
 
     /** Snoozes using only the device-protected snapshot; safe before first unlock. */
@@ -166,13 +180,29 @@ class AlarmScheduler(
                 AlarmScheduleResult.Failed.Reason.INVALID_ALARM
             )
         }
+        if (!canSnooze(alarmId)) {
+            return AlarmScheduleResult.Failed(
+                AlarmScheduleResult.Failed.Reason.SNOOZE_LIMIT_REACHED
+            )
+        }
         if (!canScheduleExact()) {
             return AlarmScheduleResult.Failed(
                 AlarmScheduleResult.Failed.Reason.EXACT_ALARM_PERMISSION_REQUIRED
             )
         }
         val triggerAt = now.plusMinutes(alarm.snoozeMinutes.toLong())
-        return registerExactAlarm(alarm.id, triggerAt) { snoozePendingIntent(alarm.id) }
+        val result = registerExactAlarm(alarmId, triggerAt) { snoozePendingIntent(alarmId) }
+        if (result is AlarmScheduleResult.Scheduled) {
+            runCatching { directBootStore.incrementSnoozeCount(alarmId) }
+                .onFailure { Log.w(TAG, "Snooze counter update failed for $alarmId", it) }
+        }
+        return result
+    }
+
+    /** True while the alarm's per-firing snooze cap allows another snooze (0 = unlimited). */
+    fun canSnooze(alarmId: Long): Boolean {
+        val snapshot = directBootStore.get(alarmId) ?: return true
+        return snapshot.maxSnoozes <= 0 || snapshot.snoozeCount < snapshot.maxSnoozes
     }
 
     internal fun directBootSnoozeMinutes(alarmId: Long): Int? =
@@ -242,6 +272,8 @@ class AlarmScheduler(
     suspend fun handleFiredAlarm(alarmId: Long): FiredAlarmResult {
         val app = context.applicationContext as AnaAlarmApp
         val alarm = app.memoryStore.getAlarm(alarmId) ?: return FiredAlarmResult.AlarmNotFound
+        // A fresh delivery starts a new snooze budget.
+        runCatching { directBootStore.resetSnoozeCount(alarmId) }
         if (alarm.days == 0) {
             app.memoryStore.setAlarmEnabled(alarmId, false)
             directBootStore.remove(alarmId)
@@ -261,6 +293,8 @@ class AlarmScheduler(
         val alarm = directBootStore.get(alarmId)
             ?.takeIf { it.enabledForRearm }
             ?: return FiredAlarmResult.AlarmNotFound
+        // A fresh delivery starts a new snooze budget (one-shots retire below anyway).
+        runCatching { directBootStore.resetSnoozeCount(alarmId) }
         if (alarm.days == 0) {
             directBootStore.retireOneShot(alarmId)
             cancelRegular(alarmId)
@@ -294,6 +328,7 @@ class AlarmScheduler(
         cancelRegular(alarmId)
         alarmManager.cancel(snoozePendingIntent(alarmId))
         cancelLegacyPendingIntents(alarmId)
+        NextAlarmWidgetProvider.updateAll(context)
     }
 
     private fun cancelRegular(alarmId: Long) {
@@ -343,6 +378,7 @@ class AlarmScheduler(
         return try {
             val clockInfo = AlarmManager.AlarmClockInfo(triggerAtMillis, showIntent(alarmId))
             alarmManager.setAlarmClock(clockInfo, operation())
+            NextAlarmWidgetProvider.updateAll(context)
             AlarmScheduleResult.Scheduled(triggerAt, triggerAtMillis)
         } catch (error: SecurityException) {
             AlarmScheduleResult.Failed(
@@ -409,6 +445,7 @@ class AlarmScheduler(
     }
 
     private companion object {
+        private const val TAG = "AnaAlarm"
         const val REQUEST_KIND_REGULAR = 0x1000_0000
         const val REQUEST_KIND_SNOOZE = 0x2000_0000
         const val REQUEST_KIND_SHOW = 0x3000_0000
@@ -431,5 +468,7 @@ private fun AlarmEntity.toDirectBootAlarm(): DirectBootAlarm = DirectBootAlarm(
     hour = hour,
     minute = minute,
     days = days,
-    snoozeMinutes = snoozeMinutes
+    snoozeMinutes = snoozeMinutes,
+    maxSnoozes = maxSnoozes,
+    ringtoneUri = ringtoneUri
 )

@@ -3,7 +3,9 @@ package com.anaalarm.data
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -21,8 +23,44 @@ data class AppSettings(
     val habits: List<String> = emptyList(),
     val interests: List<String> = emptyList(),
     val sessionMinutes: Int = 10,
-    val snoozeMinutes: Int = 10
+    val snoozeMinutes: Int = 10,
+    /** One of [Pronouns.VALUES]; drives the persona prompt's third-person forms. */
+    val pronouns: String = Pronouns.NEUTRAL,
+    /**
+     * Streams model responses with phrase-level TTS overlap. Provider-capability flag kept
+     * off by default per docs/RELIABILITY_AND_LATENCY.md until rollout is explicitly enabled.
+     */
+    val streamingEnabled: Boolean = false,
+    /** One of [Tones.VALUES]; shapes Ana's energy in the system prompt. */
+    val tone: String = Tones.UPBEAT,
+    /** TTS voice shaping, clamped by [com.anaalarm.voice.TtsManager] on use. */
+    val voicePitch: Float = 1.05f,
+    val voiceRate: Float = 1.0f
 )
+
+/** Selectable persona tones for the wake-up prompt. */
+object Tones {
+    const val GENTLE = "gentle"
+    const val UPBEAT = "upbeat"
+    const val DRILL = "drill"
+    val VALUES = listOf(GENTLE, UPBEAT, DRILL)
+}
+
+/** User-selectable third-person pronoun forms used by [com.anaalarm.ai.PromptBuilder]. */
+object Pronouns {
+    const val NEUTRAL = "neutral"
+    const val SHE = "she"
+    const val HE = "he"
+    val VALUES = listOf(NEUTRAL, SHE, HE)
+
+    data class Forms(val subject: String, val possessive: String, val beVerb: String)
+
+    fun forms(setting: String): Forms = when (setting) {
+        SHE -> Forms("she", "her", "is")
+        HE -> Forms("he", "his", "is")
+        else -> Forms("they", "their", "are")
+    }
+}
 
 class SettingsStore internal constructor(
     private val dataStore: DataStore<Preferences>,
@@ -45,6 +83,11 @@ class SettingsStore internal constructor(
         val INTERESTS = stringPreferencesKey("interests")
         val SESSION_MINUTES = intPreferencesKey("session_minutes")
         val SNOOZE_MINUTES = intPreferencesKey("snooze_minutes")
+        val PRONOUNS = stringPreferencesKey("pronouns")
+        val STREAMING_ENABLED = booleanPreferencesKey("streaming_enabled")
+        val TONE = stringPreferencesKey("tone")
+        val VOICE_PITCH = floatPreferencesKey("voice_pitch")
+        val VOICE_RATE = floatPreferencesKey("voice_rate")
     }
 
     val settings: Flow<AppSettings> = dataStore.data.map { p ->
@@ -55,7 +98,12 @@ class SettingsStore internal constructor(
             habits = SettingsLists.split(p[Keys.HABITS]),
             interests = SettingsLists.split(p[Keys.INTERESTS]),
             sessionMinutes = p[Keys.SESSION_MINUTES] ?: 10,
-            snoozeMinutes = p[Keys.SNOOZE_MINUTES] ?: 10
+            snoozeMinutes = p[Keys.SNOOZE_MINUTES] ?: 10,
+            pronouns = p[Keys.PRONOUNS] ?: Pronouns.NEUTRAL,
+            streamingEnabled = p[Keys.STREAMING_ENABLED] ?: false,
+            tone = p[Keys.TONE] ?: Tones.UPBEAT,
+            voicePitch = p[Keys.VOICE_PITCH] ?: 1.05f,
+            voiceRate = p[Keys.VOICE_RATE] ?: 1.0f
         )
     }.flowOn(Dispatchers.IO)
 
@@ -66,7 +114,12 @@ class SettingsStore internal constructor(
         habits: List<String>? = null,
         interests: List<String>? = null,
         sessionMinutes: Int? = null,
-        snoozeMinutes: Int? = null
+        snoozeMinutes: Int? = null,
+        pronouns: String? = null,
+        streamingEnabled: Boolean? = null,
+        tone: String? = null,
+        voicePitch: Float? = null,
+        voiceRate: Float? = null
     ) {
         var writtenSecret: CachedSecret? = null
         dataStore.edit { p ->
@@ -87,6 +140,11 @@ class SettingsStore internal constructor(
             interests?.let { p[Keys.INTERESTS] = SettingsLists.join(it) }
             sessionMinutes?.let { p[Keys.SESSION_MINUTES] = it }
             snoozeMinutes?.let { p[Keys.SNOOZE_MINUTES] = it }
+            pronouns?.let { p[Keys.PRONOUNS] = it }
+            streamingEnabled?.let { p[Keys.STREAMING_ENABLED] = it }
+            tone?.let { p[Keys.TONE] = it }
+            voicePitch?.let { p[Keys.VOICE_PITCH] = it }
+            voiceRate?.let { p[Keys.VOICE_RATE] = it }
         }
         writtenSecret?.let { cachedApiKey = it }
     }

@@ -187,6 +187,71 @@ class AlarmSchedulerTest {
         verify(exactly = 2) { alarmManager.setAlarmClock(any(), any()) }
     }
 
+    @Test
+    fun `snooze cap blocks further snoozes and reports a typed reason`() {
+        every { alarmManager.canScheduleExactAlarms() } returns true
+        val now = LocalDateTime.of(2026, 8, 2, 6, 0)
+        val capped = AlarmEntity(
+            id = 80, hour = 7, minute = 0, days = 0,
+            snoozeMinutes = 5, maxSnoozes = 2
+        )
+        scheduler.schedule(capped)
+
+        assertTrue(scheduler.canSnooze(80))
+        assertEquals(
+            AlarmScheduleResult.Scheduled::class,
+            scheduler.scheduleSnooze(capped, now)::class
+        )
+        assertTrue(scheduler.canSnooze(80))
+        assertEquals(
+            AlarmScheduleResult.Scheduled::class,
+            scheduler.scheduleSnooze(capped, now)::class
+        )
+        assertFalse(scheduler.canSnooze(80))
+
+        val third = scheduler.scheduleSnooze(capped, now)
+        assertEquals(
+            AlarmScheduleResult.Failed.Reason.SNOOZE_LIMIT_REACHED,
+            (third as AlarmScheduleResult.Failed).reason
+        )
+        // The rejected attempt must not register another system alarm.
+        verify(exactly = 3) { alarmManager.setAlarmClock(any(), any()) }
+    }
+
+    @Test
+    fun `unlimited alarms never hit the snooze cap`() {
+        every { alarmManager.canScheduleExactAlarms() } returns true
+        val now = LocalDateTime.of(2026, 8, 2, 6, 0)
+        val unlimited = AlarmEntity(
+            id = 81, hour = 7, minute = 0, days = 0,
+            snoozeMinutes = 5, maxSnoozes = 0
+        )
+        scheduler.schedule(unlimited)
+
+        repeat(4) { index ->
+            val result = scheduler.scheduleSnooze(unlimited, now.plusMinutes(index * 5L))
+            assertTrue(result is AlarmScheduleResult.Scheduled)
+            assertTrue(scheduler.canSnooze(81))
+        }
+    }
+
+    @Test
+    fun `a fresh delivery resets the snooze budget`() {
+        every { alarmManager.canScheduleExactAlarms() } returns true
+        val repeating = AlarmEntity(
+            id = 82, hour = 7, minute = 0, days = 0b0111110,
+            snoozeMinutes = 5, maxSnoozes = 1
+        )
+        scheduler.schedule(repeating)
+        scheduler.scheduleSnooze(repeating)
+        assertFalse(scheduler.canSnooze(82))
+
+        // The next regular firing (direct-boot path; same reset runs unlocked) starts a new budget.
+        val result = scheduler.handleDirectBootFiredAlarm(82)
+        assertTrue(result is FiredAlarmResult.RepeatingRearmed)
+        assertTrue(scheduler.canSnooze(82))
+    }
+
     private companion object {
         const val TEST_DIRECT_BOOT_PREFERENCES = "alarm_scheduler_test"
     }

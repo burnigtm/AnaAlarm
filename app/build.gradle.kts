@@ -74,6 +74,11 @@ android {
             isIncludeAndroidResources = true
             isReturnDefaultValues = true
         }
+        // MockK inline mocking requires byte-buddy-agent self-attach, which JDK 21+ blocks by
+        // default. Harmless on JDK 17 where CI runs.
+        unitTests.all { test ->
+            test.jvmArgs("-Djdk.attach.allowAttachSelf=true", "-XX:+EnableDynamicAgentLoading")
+        }
     }
 
     sourceSets {

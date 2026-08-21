@@ -71,9 +71,86 @@ class DirectBootAlarmStoreTest {
     @Test
     fun `malformed values fail closed`() {
         assertNull(DirectBootAlarmStore.decode("not-a-schedule"))
-        assertNull(DirectBootAlarmStore.decode("v1|1|99|0|0|10|enabled"))
-        assertNull(DirectBootAlarmStore.decode("v1|1|7|0|128|10|enabled"))
-        assertTrue(DirectBootAlarmStore.encode(DirectBootAlarm(3L, 5, 20, 0, 10)).isNotBlank())
+        assertNull(DirectBootAlarmStore.decode("v2|1|99|0|0|10|enabled|0|0|"))
+        assertNull(DirectBootAlarmStore.decode("v2|1|7|0|128|10|enabled|0|0|"))
+        assertTrue(
+            DirectBootAlarmStore.encode(DirectBootAlarm(3L, 5, 20, 0, 10)).isNotBlank()
+        )
+    }
+
+    @Test
+    fun `direct boot alarm validation rejects impossible state`() {
+        fun alarm(
+            id: Long = 1L,
+            hour: Int = 7,
+            minute: Int = 0,
+            days: Int = 0,
+            snoozeMinutes: Int = 10,
+            enabledForRearm: Boolean = true
+        ) = DirectBootAlarm(id, hour, minute, days, snoozeMinutes, enabledForRearm)
+
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { alarm(id = -1L) }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { alarm(hour = 24) }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { alarm(minute = 60) }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { alarm(days = 128) }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { alarm(snoozeMinutes = 0) }
+        // Only a one-shot (days == 0) may be retired.
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            alarm(days = 2, enabledForRearm = false)
+        }
+    }
+
+    @Test
+    fun `v2 round trip carries snooze counter cap and ringtone`() {
+        val alarm = DirectBootAlarm(
+            id = 12L,
+            hour = 6,
+            minute = 5,
+            days = 0b1111111,
+            snoozeMinutes = 9,
+            maxSnoozes = 3,
+            ringtoneUri = "content://media/internal/audio/media/5"
+        )
+        store.upsert(alarm)
+        assertEquals(alarm, store.get(12L))
+        val decoded = DirectBootAlarmStore.decode(DirectBootAlarmStore.encode(alarm))
+        assertEquals(alarm, decoded)
+    }
+
+    @Test
+    fun `legacy v1 snapshots decode without counter or ringtone`() {
+        val decoded = DirectBootAlarmStore.decode("v1|9|6|15|0|4|enabled")
+        assertEquals(DirectBootAlarm(9L, 6, 15, 0, 4), decoded)
+        assertNull(DirectBootAlarmStore.decode("v1|9|6|15|0|4|unknown-state"))
+        assertNull(DirectBootAlarmStore.decode("v3|9|6|15|0|4|enabled|0|0|"))
+    }
+
+    @Test
+    fun `snooze counter increments and resets durably`() {
+        store.upsert(DirectBootAlarm(30L, 7, 0, 0, 10, maxSnoozes = 2))
+
+        assertEquals(1, store.incrementSnoozeCount(30L)?.snoozeCount)
+        assertEquals(2, store.incrementSnoozeCount(30L)?.snoozeCount)
+        assertEquals(2, store.get(30L)?.snoozeCount)
+
+        assertEquals(0, store.resetSnoozeCount(30L)?.snoozeCount)
+        assertEquals(0, store.get(30L)?.snoozeCount)
+        assertNull(store.incrementSnoozeCount(404L))
+        assertNull(store.resetSnoozeCount(404L))
+    }
+
+    @Test
+    fun `upsert and replaceEnabled preserve an in-flight snooze count`() {
+        store.upsert(DirectBootAlarm(31L, 7, 0, 0, 10, maxSnoozes = 3))
+        store.incrementSnoozeCount(31L)
+        store.incrementSnoozeCount(31L)
+
+        // A re-arm or unlock reconciliation rewrites the snapshot from Room defaults.
+        store.upsert(DirectBootAlarm(31L, 7, 0, 0, 10, maxSnoozes = 3))
+        assertEquals(2, store.get(31L)?.snoozeCount)
+
+        store.replaceEnabled(listOf(DirectBootAlarm(31L, 7, 0, 0, 10, maxSnoozes = 3)))
+        assertEquals(2, store.get(31L)?.snoozeCount)
     }
 
     @Test

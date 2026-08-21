@@ -3,7 +3,9 @@ package com.anaalarm.ui.home
 import com.anaalarm.alarm.AlarmScheduler
 import com.anaalarm.alarm.AlarmScheduleResult
 import com.anaalarm.data.AlarmEntity
+import com.anaalarm.data.AppSettings
 import com.anaalarm.data.MemoryStore
+import com.anaalarm.data.SettingsStore
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -12,6 +14,7 @@ import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -30,6 +33,7 @@ class HomeViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     private lateinit var memory: MemoryStore
     private lateinit var scheduler: AlarmScheduler
+    private lateinit var settingsStore: SettingsStore
     private lateinit var vm: HomeViewModel
 
     @Before
@@ -37,8 +41,13 @@ class HomeViewModelTest {
         Dispatchers.setMain(dispatcher)
         memory = mockk(relaxed = true)
         scheduler = mockk(relaxed = true)
+        settingsStore = mockk()
+        every { settingsStore.settings } returns flowOf(AppSettings(habits = listOf("stretch")))
+        coEvery { memory.todaySummary() } returns ""
+        coEvery { memory.habitsForDate(any()) } returns emptyList()
+        coEvery { memory.habitStreaks(any(), any()) } returns emptyMap()
         everyAlarms()
-        vm = HomeViewModel(memory, scheduler)
+        vm = HomeViewModel(memory, scheduler, settingsStore)
     }
 
     @After
@@ -131,5 +140,19 @@ class HomeViewModelTest {
         assertEquals(18, next!!.hour)
         assertEquals(0, next.minute)
         assertEquals(now.toLocalDate(), next.triggerAt.toLocalDate())
+    }
+
+    @Test
+    fun `upcoming is null without alarms or when everything is disabled`() {
+        val now = LocalDateTime.of(2026, 8, 19, 10, 0)
+
+        assertEquals(null, HomeViewModel.upcoming(emptyList(), now))
+        assertEquals(
+            null,
+            HomeViewModel.upcoming(
+                listOf(AlarmEntity(id = 1, hour = 6, minute = 0, enabled = false)),
+                now
+            )
+        )
     }
 }

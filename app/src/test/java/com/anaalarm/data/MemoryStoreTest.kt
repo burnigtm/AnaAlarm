@@ -158,4 +158,84 @@ class MemoryStoreTest {
         memory.saveDailyLog("today plan")
         assertEquals("today plan", memory.todaySummary())
     }
+
+    @Test
+    fun `append daily log keeps the most recent tail when the cap is exceeded`() = runTest {
+        val day = LocalDate.of(2026, 8, 1)
+        val first = "x".repeat(1_500)
+        val second = "y".repeat(600)
+
+        memory.appendDailyLog(first, day)
+        memory.appendDailyLog(second, day)
+
+        val stored = db.dailyLogDao().getByDate(day.toString())?.summary.orEmpty()
+        // Combined length exceeds MAX_DAILY_LOG_CHARS (1801): only the tail survives.
+        assertEquals(1_801, stored.length)
+        assertTrue(stored.endsWith(second))
+        assertTrue(stored.startsWith("x"))
+    }
+
+    @Test
+    fun `yesterdaySummary is empty without any earlier log`() = runTest {
+        assertEquals("", memory.yesterdaySummary())
+    }
+
+    @Test
+    fun `yesterdaySummary skips a blank stored summary`() = runTest {
+        val twoDaysAgo = LocalDate.now().minusDays(2)
+        memory.saveDailyLog("   ", twoDaysAgo)
+        assertEquals("", memory.yesterdaySummary())
+    }
+
+    @Test
+    fun `yesterdaySummary falls back to the raw date when it cannot be parsed`() = runTest {
+        // Sorts before today's ISO date but is not a valid LocalDate.
+        db.dailyLogDao().upsert(DailyLogEntity(date = "1999-99-99", summary = "kept as written"))
+
+        val summary = memory.yesterdaySummary()
+        assertTrue(summary.startsWith("1999-99-99"))
+        assertTrue(summary.contains("kept as written"))
+    }
+
+    @Test
+    fun `usage rows aggregate over date windows`() = runTest {
+        val today = LocalDate.now()
+        memory.recordUsage(today, 1L, inputTokens = 100, outputTokens = 20, cachedTokens = 60, totalTokens = 120)
+        memory.recordUsage(today.minusDays(3), 1L, inputTokens = 50, outputTokens = 10, cachedTokens = 0, totalTokens = 60)
+        memory.recordUsage(today.minusDays(10), 2L, inputTokens = 999, outputTokens = 999, cachedTokens = 0, totalTokens = 1998)
+
+        val week = memory.usageSummary(daysBack = 6)
+        assertEquals(150L, week.inputTokens)
+        assertEquals(30L, week.outputTokens)
+        assertEquals(60L, week.cachedTokens)
+        assertEquals(180L, week.totalTokens)
+        assertEquals(2, week.requests)
+
+        val todayOnly = memory.usageSummary(daysBack = 0)
+        assertEquals(100L, todayOnly.inputTokens)
+        assertEquals(1, todayOnly.requests)
+
+        assertEquals(3, memory.usageSummary(daysBack = 30).requests)
+    }
+
+    @Test
+    fun `empty usage ledger aggregates to zeros without failing`() = runTest {
+        val empty = memory.usageSummary(daysBack = 7)
+        assertEquals(0L, empty.totalTokens)
+        assertEquals(0, empty.requests)
+    }
+
+    @Test
+    fun `session records persist their shape and read back newest first`() = runTest {
+        memory.recordSession(startedAtMillis = 1_000L, endedAtMillis = 61_000L, turns = 5)
+        memory.recordSession(startedAtMillis = 2_000L, endedAtMillis = 3_000L, turns = 1)
+        // A degenerate record (no turns, no duration) is ignored entirely.
+        memory.recordSession(startedAtMillis = 9_000L, endedAtMillis = 9_000L, turns = 0)
+
+        val records = memory.recentSessionRecords(limit = 10)
+        assertEquals(2, records.size)
+        assertEquals(2_000L, records.first().startedAt)
+        assertEquals(60_000L, records[1].durationMs)
+        assertEquals(5, records[1].turns)
+    }
 }

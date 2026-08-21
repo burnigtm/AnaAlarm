@@ -198,13 +198,29 @@ release-gate failure rather than a green no-op.
 | `ai/DeepSeekClientTest` | Request/response contract over MockWebServer on the JVM |
 | `ai/ConversationEngineTest` | Session orchestration with a mocked client |
 | `data/MemoryStoreTest` | Repository logic with fakes |
-| `data/AnaDatabaseMigrationTest` | Host-side real SQLite 1→4 preservation and current-index validation |
+| `data/AnaDatabaseMigrationTest` | Host-side real SQLite 1→7 preservation and current-index validation |
 | `data/SettingsListsTest`, `data/SettingsStoreSanitizeTest` | List join/split and secret sanitising |
 | `data/AlarmEntityTest` | Derived `timeMinutes` |
 | `ui/home/HomeViewModelTest` | Toggle/delete side effects on the scheduler and store |
 | `ui/wakeup/SessionPhrasesTest` | Stop-phrase matching |
 | `telemetry/LatencyMetricsTest`, `ai/DeepSeekClientTest` telemetry cases | Stable metric schema/sanitization, call-scoped capture, exactly-once alarm/TTS boundaries, and one model terminal event across success, retry, provider failure, deadline, and caller cancellation |
 | `voice/RecognitionGenerationTest`, `voice/TtsRequestGenerationTest`, `voice/UtteranceRegistryTest` | Stale/cancelled ASR and TTS request/callback rejection |
+
+Enhancement-program additions (see [ENHANCEMENTS.md](ENHANCEMENTS.md)):
+
+| Class | Covers |
+|---|---|
+| `ai/stream/SseParserTest` | Frame splitting, multi-line data joins, keep-alive comments, CRLF/CR chunk boundaries, size caps, trailing dispatch |
+| `ai/stream/ResponsesStreamDecoderTest` | Sequence validation, event/type matching, `[DONE]` rejection, terminal semantics, unknown-event tolerance |
+| `ai/stream/PhraseSegmenterTest` | 24/72/160-char rules, surrogate safety, decimals, whitespace-only deltas, tail flush |
+| `ai/stream/StreamingTurnCoordinatorTest` | Flush-then-append ordering, bounded backpressure, settle gating, late/duplicate callbacks, cancellation, fallback gating |
+| `ai/DeepSeekClientStreamTest` | SSE contract over MockWebServer: happy path with usage, EOF-without-terminal, failed/incomplete terminals, protocol and content-type failures, cancellation |
+| `alarm/DismissalChallengesTest` | Math ranges/self-consistency, memory codes, answer tolerance, type-code fallback |
+| `data/StreakCalculatorTest` | Consecutive-day chains, today-pending behavior, gaps/unmarks, independence, bad dates |
+| `data/DataExportTest` | Structural credential exclusion, encrypted round trip, damaged-file rejection, merge restore (fake cipher; Robolectric has no KeyStore) |
+| `data/PronounsTest`, `ui/AppLocalesTest` | Pronoun form mapping and BCP-47 tag mapping |
+| `voice/OrderedUtteranceRegistryTest` | Ordered per-turn registry: start/finish round trips, per-turn clearing, audibility counts |
+| `ai/DebugTlsTest` | Debug TLS hook remains a strict pass-through |
 
 ---
 

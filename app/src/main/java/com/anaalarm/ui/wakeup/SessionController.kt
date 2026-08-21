@@ -9,8 +9,10 @@ import androidx.compose.runtime.setValue
 import com.anaalarm.AnaAlarmApp
 import com.anaalarm.R
 import com.anaalarm.ai.ApiException
+import com.anaalarm.ai.stream.StreamingTurnCoordinator
 import com.anaalarm.alarm.AlarmScheduleResult
 import com.anaalarm.alarm.AlarmService
+import com.anaalarm.alarm.DismissalChallenges
 import com.anaalarm.voice.SpeechListener
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -23,6 +25,15 @@ import kotlinx.coroutines.supervisorScope
 import java.util.concurrent.atomic.AtomicBoolean
 
 enum class SessionStatus { STARTING, SPEAKING, LISTENING, THINKING, ENDED }
+
+/** What the user must complete before the Stop button takes effect. */
+data class StopChallengeUi(
+    val type: DismissalChallenges.Type,
+    /** Math variant: the question to answer. */
+    val mathQuestion: DismissalChallenges.MathQuestion? = null,
+    /** Memory variant: true while the code is still visible. */
+    val showingCode: Boolean = false
+)
 
 class SessionController(
     private val app: AnaAlarmApp,
@@ -46,6 +57,9 @@ class SessionController(
         private set
     var snoozeInFlight by mutableStateOf(false)
         private set
+    /** Non-null while a stop challenge is on screen; Stop only fires once it is solved. */
+    var activeChallenge by mutableStateOf<StopChallengeUi?>(null)
+        private set
 
     val snoozeAvailable: Boolean get() = alarmId >= 1L
 
@@ -55,6 +69,9 @@ class SessionController(
 
     private var languageTag = "en-US"
     private var sessionMs = 10 * 60_000L
+    private var streamingEnabled = false
+    private var stopChallengeType = DismissalChallenges.Type.NONE
+    private var memoryCode: String? = null
     private val sessionStart = SystemClock.elapsedRealtime()
     private var started = false
     private var ended = false
@@ -72,7 +89,9 @@ class SessionController(
     private var settleJob: Job? = null
     private var listenTimeoutJob: Job? = null
     private var listenRetryJob: Job? = null
+    private var deadlineJob: Job? = null
     private var boundSpeechListener: SpeechListener? = null
+    private var activeCoordinator: StreamingTurnCoordinator? = null
 
     private val finalizationStarted = AtomicBoolean(false)
     private val finishedCallbackSent = AtomicBoolean(false)
@@ -89,6 +108,13 @@ class SessionController(
         private const val MIC_SETTLE_MS = 175L
         private const val LISTEN_RETRY_MS = 350L
         private const val MAX_SILENT_CYCLES = 2
+
+        /**
+         * The configured session length is a soft target checked between turns; this grace window
+         * is the hard wall-clock cap. At the deadline the session wraps up even if a THINKING
+         * turn or a chatty exchange would otherwise keep it alive indefinitely.
+         */
+        private const val HARD_DEADLINE_GRACE_MS = 90_000L
     }
 
     fun start() {
@@ -100,13 +126,24 @@ class SessionController(
                 val settings = app.settingsStore.settings.first()
                 languageTag = if (settings.language == "pt") "pt-BR" else "en-US"
                 sessionMs = settings.sessionMinutes * 60_000L
+                streamingEnabled = settings.streamingEnabled
+                stopChallengeType = if (alarmId >= 1L) {
+                    runCatching {
+                        DismissalChallenges.Type.from(
+                            app.memoryStore.getAlarm(alarmId)?.challengeType ?: 0
+                        )
+                    }.getOrDefault(DismissalChallenges.Type.NONE)
+                } else {
+                    DismissalChallenges.Type.NONE
+                }
+                scheduleHardDeadline()
 
                 // TTS binding and the first network request are independent cold-start costs.
                 // Starting both now removes up to an entire TTS initialization from greeting
                 // latency while the local alarm remains the audible fallback.
                 val (greetingText, ready) = supervisorScope {
                     val ttsReady = async {
-                        runCatching { prepareTts(settings.language) }.getOrDefault(false)
+                        runCatching { prepareTts(settings) }.getOrDefault(false)
                     }
                     val greeting = async { conversationEngine.startSession() }
 
@@ -135,7 +172,18 @@ class SessionController(
         }
     }
 
-    private suspend fun prepareTts(language: String): Boolean {
+    private fun scheduleHardDeadline() {
+        deadlineJob?.cancel()
+        deadlineJob = scope.launch {
+            delay(sessionMs + HARD_DEADLINE_GRACE_MS)
+            if (!ended && !ending && !disposed) {
+                Log.i(TAG, "Hard session deadline reached; wrapping up")
+                wrapUp()
+            }
+        }
+    }
+
+    private suspend fun prepareTts(settings: com.anaalarm.data.AppSettings): Boolean {
         var manager = app.ttsManager
         var ready = manager.awaitReady(3_000L)
         if (!ready && !ended && !disposed) {
@@ -145,9 +193,9 @@ class SessionController(
             ready = manager.awaitReady(5_000L)
         }
         if (ready && !ended && !disposed) {
-            manager.setLanguage(language)
-            manager.setPitch(1.05f)
-            manager.setSpeechRate(1.0f)
+            manager.setLanguage(settings.language)
+            manager.setPitch(settings.voicePitch)
+            manager.setSpeechRate(settings.voiceRate)
         }
         return ready
     }
@@ -278,9 +326,11 @@ class SessionController(
         status = SessionStatus.THINKING
         turnJob = scope.launch {
             try {
-                val reply = conversationEngine.respond(text)
-                turnInFlight = false
-                if (!ended && !ending && !disposed) speak(reply)
+                if (streamingEnabled) {
+                    runStreamingTurn(text)
+                } else {
+                    runLegacyTurn(text)
+                }
             } catch (e: CancellationException) {
                 turnInFlight = false
                 throw e
@@ -288,6 +338,51 @@ class SessionController(
                 turnInFlight = false
                 fail(e)
             }
+        }
+    }
+
+    private suspend fun runLegacyTurn(text: String) {
+        val reply = conversationEngine.respond(text)
+        turnInFlight = false
+        if (!ended && !ending && !disposed) speak(reply)
+    }
+
+    /**
+     * Streaming turn: phrases are spoken while the model is still generating. The microphone
+     * reopens only after the semantic terminal AND the final utterance completion, which is the
+     * point where [coordinator.awaitSettled] returns.
+     */
+    private suspend fun runStreamingTurn(text: String) {
+        val coordinator = StreamingTurnCoordinator(
+            turnId = StreamingTurnCoordinator.nextTurnId(),
+            ttsManager = app.ttsManager,
+            onFirstPhraseAudioStarted = { stopAlarmFallback() }
+        )
+        activeCoordinator = coordinator
+        try {
+            val reply = conversationEngine.respondStreaming(text, coordinator::accept)
+            coordinator.markTerminalCompleted()
+            aiText = reply
+            turnInFlight = false
+            coordinator.awaitSettled()
+            if (!ended && !ending && !disposed) afterSpeaking()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (coordinator.canFallbackToNonStreaming()) {
+                // Nothing was audible yet, so a fresh non-streaming request cannot replay speech.
+                Log.w(TAG, "Streaming failed before first audio; falling back", e)
+                coordinator.dispose()
+                val reply = conversationEngine.respond(text, insertUserMessage = false)
+                turnInFlight = false
+                if (!ended && !ending && !disposed) speak(reply)
+            } else {
+                // Some audio already played; an invisible retry would duplicate it.
+                coordinator.markTerminalFailed(e as? ApiException ?: ApiException(e.message ?: "ai error"))
+                fail(coordinator.failure ?: e)
+            }
+        } finally {
+            if (activeCoordinator === coordinator) activeCoordinator = null
         }
     }
 
@@ -365,16 +460,84 @@ class SessionController(
         voiceHint = app.getString(R.string.type_fallback_switch)
     }
 
-    fun submitText(text: String) {
-        if (text.isBlank() || ended || ending || disposed) return
+    /** Returns false when the input was rejected, so the UI can keep it for another attempt. */
+    fun submitText(text: String): Boolean {
+        if (text.isBlank() || ended || ending || disposed) return false
         // Typed input is accepted from the same visible LISTENING state as speech.
-        if (status != SessionStatus.LISTENING) return
+        if (status != SessionStatus.LISTENING) return false
         onUserSpeech(text.trim())
+        return true
     }
 
     fun stopNow() {
         terminateSession(finishActivity = true)
     }
+
+    /**
+     * Stop-button entry point: alarms configured with a dismissal challenge must prove the
+     * user is awake first. Test sessions (no alarm id) always stop immediately.
+     */
+    fun requestStop() {
+        if (ended || ending || disposed) return
+        when (stopChallengeType) {
+            DismissalChallenges.Type.MATH -> {
+                activeChallenge = StopChallengeUi(
+                    type = DismissalChallenges.Type.MATH,
+                    mathQuestion = DismissalChallenges.mathQuestion()
+                )
+            }
+            DismissalChallenges.Type.MEMORY -> {
+                memoryCode = DismissalChallenges.memoryCode()
+                activeChallenge = StopChallengeUi(
+                    type = DismissalChallenges.Type.MEMORY,
+                    showingCode = true
+                )
+            }
+            DismissalChallenges.Type.NONE -> stopNow()
+        }
+    }
+
+    /** Memory challenge: the user saw the code and is ready to type it back. */
+    fun beginChallengeAnswer() {
+        val current = activeChallenge ?: return
+        if (current.type == DismissalChallenges.Type.MEMORY && current.showingCode) {
+            activeChallenge = current.copy(showingCode = false)
+        }
+    }
+
+    /**
+     * Returns true when the answer unlocked Stop (the session then terminates); a wrong
+     * answer regenerates the math question or keeps the code prompt open.
+     */
+    fun submitChallengeAnswer(typed: String): Boolean {
+        val current = activeChallenge ?: return true
+        val expected: String = when (current.type) {
+            DismissalChallenges.Type.MATH ->
+                current.mathQuestion?.answer?.toString() ?: return true
+            DismissalChallenges.Type.MEMORY -> memoryCode ?: return true
+            else -> return true
+        }
+        if (!DismissalChallenges.isAnswerCorrect(expected, typed)) {
+            if (current.type == DismissalChallenges.Type.MATH) {
+                activeChallenge = current.copy(
+                    mathQuestion = DismissalChallenges.mathQuestion()
+                )
+            }
+            return false
+        }
+        activeChallenge = null
+        memoryCode = null
+        stopNow()
+        return true
+    }
+
+    fun dismissChallenge() {
+        activeChallenge = null
+        memoryCode = null
+    }
+
+    /** Display-only access for the memory challenge's visible-code phase. */
+    fun revealMemoryCodeForDisplay(): String = memoryCode.orEmpty()
 
     fun snoozeNow() {
         if (!snoozeAvailable || snoozeInFlight || ending || disposed) return
@@ -395,7 +558,15 @@ class SessionController(
             } else if (!disposed) {
                 // Scheduling failure is recoverable. Keep the existing session (and its alarm
                 // fallback) active so the user can retry or explicitly stop it.
-                errorText = app.getString(R.string.snooze_failed)
+                errorText = app.getString(
+                    if (result is AlarmScheduleResult.Failed &&
+                        result.reason == AlarmScheduleResult.Failed.Reason.SNOOZE_LIMIT_REACHED
+                    ) {
+                        R.string.no_snoozes_left
+                    } else {
+                        R.string.snooze_failed
+                    }
+                )
             }
         }
     }
@@ -451,9 +622,33 @@ class SessionController(
             e is ApiException && e.message == "network error" -> app.getString(R.string.network_error)
             else -> app.getString(R.string.ai_error)
         }
-        // Keep the independent alarm service ringing. Only audible TTS or an explicit user
-        // Stop/Snooze is allowed to silence a wake-up after an API/offline failure.
-        transitionToEnded()
+        if (app.ttsManager.isReady) {
+            // A working voice turns an AI failure into a spoken early wrap-up instead of a
+            // silent screen: the farewell's audible start silences the alarm (invariant 5) and
+            // the session then closes through the explicit terminal path.
+            speakOfflineFarewell()
+        } else {
+            // Keep the independent alarm service ringing. Only audible TTS or an explicit user
+            // Stop/Snooze is allowed to silence a wake-up after an API/offline failure.
+            transitionToEnded()
+        }
+    }
+
+    private fun speakOfflineFarewell() {
+        ending = true
+        status = SessionStatus.SPEAKING
+        val generation = ++ttsGeneration
+        app.ttsManager.speak(
+            text = app.getString(R.string.offline_farewell),
+            onStart = {
+                if (generation == ttsGeneration && !ended && !disposed) stopAlarmFallback()
+            },
+            completion = {
+                if (generation == ttsGeneration && !ended && !disposed) {
+                    terminateSession(finishActivity = true)
+                }
+            }
+        )
     }
 
     /** Clears callbacks/jobs owned by this Activity. Final persistence survives Activity teardown. */
@@ -474,6 +669,8 @@ class SessionController(
         if (ended) return
         ended = true
         ending = false
+        activeChallenge = null
+        memoryCode = null
         cancelNetworkJobs()
         cancelListenCycle(stopRecognizer = true)
         ++ttsGeneration
@@ -503,6 +700,10 @@ class SessionController(
         wrapUpJob = null
         snoozeJob?.cancel()
         snoozeJob = null
+        deadlineJob?.cancel()
+        deadlineJob = null
+        activeCoordinator?.dispose()
+        activeCoordinator = null
         snoozeInFlight = false
         turnInFlight = false
     }
@@ -512,7 +713,7 @@ class SessionController(
 
     private fun stopAlarmFallback() {
         if (alarmFallbackStopped.compareAndSet(false, true)) {
-            runCatching { AlarmService.stop(app) }
+            runCatching { AlarmService.stop(app, alarmId) }
                 .onFailure { Log.w(TAG, "Unable to stop alarm fallback", it) }
         }
     }

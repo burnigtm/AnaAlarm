@@ -2,6 +2,7 @@ package com.anaalarm.ui.wakeup
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -39,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -179,8 +182,9 @@ fun WakeUpScreen(controller: SessionController) {
                         Spacer(Modifier.width(8.dp))
                         Button(
                             onClick = {
-                                controller.submitText(typed)
-                                typed = ""
+                                // Keep the draft when the controller rejects input (for example
+                                // mid-THINKING) so the user does not retype their answer.
+                                if (controller.submitText(typed)) typed = ""
                             },
                             enabled = typed.isNotBlank() &&
                                 controller.status == SessionStatus.LISTENING
@@ -225,7 +229,7 @@ fun WakeUpScreen(controller: SessionController) {
                 Spacer(Modifier.height(12.dp))
             }
             Button(
-                onClick = { controller.stopNow() },
+                onClick = { controller.requestStop() },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.error,
                     contentColor = MaterialTheme.colorScheme.onError
@@ -243,6 +247,114 @@ fun WakeUpScreen(controller: SessionController) {
             }
         }
     }
+
+    controller.activeChallenge?.let { challenge ->
+        StopChallengeDialog(controller = controller, challenge = challenge)
+    }
+}
+
+@Composable
+private fun StopChallengeDialog(
+    controller: SessionController,
+    challenge: StopChallengeUi
+) {
+    val context = LocalContext.current
+    var typed by remember { mutableStateOf("") }
+    var wrongAttempt by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = { controller.dismissChallenge() },
+        title = { Text(context.getString(R.string.challenge_title)) },
+        text = {
+            Column {
+                when {
+                    challenge.type == com.anaalarm.alarm.DismissalChallenges.Type.MEMORY &&
+                        challenge.showingCode -> {
+                        Text(context.getString(R.string.challenge_memory_show))
+                        Spacer(Modifier.height(12.dp))
+                        val code = remember(challenge) { controller.revealMemoryCodeForDisplay() }
+                        Text(
+                            text = code,
+                            fontSize = 40.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 8.sp,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                    else -> {
+                        if (challenge.type == com.anaalarm.alarm.DismissalChallenges.Type.MATH) {
+                            Text(
+                                text = context.getString(R.string.challenge_math_prompt),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = challenge.mathQuestion?.prompt.orEmpty(),
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = TextAlign.Center
+                            )
+                        } else {
+                            Text(
+                                text = context.getString(R.string.challenge_memory_prompt),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = typed,
+                            onValueChange = {
+                                typed = it
+                                wrongAttempt = false
+                            },
+                            label = { Text(context.getString(R.string.challenge_answer_hint)) },
+                            singleLine = true,
+                            isError = wrongAttempt,
+                            supportingText = {
+                                if (wrongAttempt) {
+                                    Text(context.getString(R.string.challenge_wrong))
+                                }
+                            },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.NumberPassword
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (challenge.showingCode &&
+                        challenge.type == com.anaalarm.alarm.DismissalChallenges.Type.MEMORY
+                    ) {
+                        controller.beginChallengeAnswer()
+                    } else {
+                        if (!controller.submitChallengeAnswer(typed)) {
+                            wrongAttempt = true
+                            typed = ""
+                        }
+                    }
+                },
+                enabled = challenge.showingCode || typed.isNotBlank()
+            ) {
+                Text(
+                    context.getString(
+                        if (challenge.showingCode) R.string.challenge_ready else R.string.submit
+                    )
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { controller.dismissChallenge() }) {
+                Text(context.getString(R.string.cancel))
+            }
+        }
+    )
 }
 
 @Composable

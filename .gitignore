@@ -38,3 +38,6 @@ build-wakeup.png
 # Secrets
 secrets.properties
 .env
+
+# JVM crash diagnostics
+hs_err_pid*.log
