@@ -146,13 +146,23 @@ Two interactions between program changes surfaced in the on-device suite
    failures keep the original ring-until-explicit-action behavior. Related: Phase 5's
    `requestStop()` initially guarded on `ended`, which bricked the Stop button on exactly those
    ended-but-open screens; the explicit stop path now bypasses that guard.
-2. **Queued service stops are exact-id scoped and time-boxed.** The per-alarm stop scoping
-   initially kept an unscoped `[-1]` stop request alive indefinitely, and a first fix's 15-second
-   window still let teardown stops suppress the next test's fresh delivery. Final design: a `[-1]`
-   stop resolves against the service's last-started alarm id, every queued stop matches exactly
-   one alarm, honors are gated to 15 seconds, and — critically — the service always calls
-   `startForeground()` before any stop handling, because skipping it crashes the process with
-   `ForegroundServiceDidNotStartInTimeException` under the `startForegroundService()` contract.
+2. **Queued service stops are exact-id scoped, time-boxed, and foreground-safe.** The per-alarm
+   stop scoping initially kept an unscoped `[-1]` stop request alive indefinitely, and honoring
+   any queued stop skipped `startForeground()` entirely — crashing under the
+   `startForegroundService()` contract. Final design: the service always promotes to foreground
+   first; `[-1]` stops resolve against the service's last-started alarm id, every queued stop
+   matches exactly one alarm, and honors are gated to 15 seconds.
+3. **Locale application is change-gated.** Phase 4 applied the stored language on every process
+   start and after every settings save, forcing activity recreations even when nothing changed;
+   a recreation racing the Compose test recomposer crashed with
+   `CalledFromWrongThreadException`, and the switch ran before the save confirmation could show.
+   Final design: `apply()` no-ops when the requested language already matches the effective
+   configuration, startup sync was removed entirely, and Settings applies the locale only after
+   the confirmation snackbar.
+4. **Device tests scroll to below-fold editor controls.** The Phase-6 sections made
+   `AlarmEditScreen` taller than small viewports; clicks on clipped nodes silently missed. The
+   affected suites now `performScrollTo()` before interacting, matching real user behavior, and
+   the instrumented `wrapUp` contract was aligned with the Phase-1 bounded-history change.
 
 ## Deferred intentionally
 
