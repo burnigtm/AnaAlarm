@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
@@ -83,7 +84,7 @@ class AlarmEditScreenInstrumentedTest {
     fun savingANewAlarmPersistsItAndConfirmsWithASnackbar() {
         openNewAlarmEditor()
 
-        compose.onNodeWithText(str(R.string.save)).performClick()
+        compose.onNodeWithText(str(R.string.save)).performScrollTo().performClick()
 
         val saved = awaitStoredAlarms(1)
         assertEquals(1, saved.size)
@@ -98,7 +99,7 @@ class AlarmEditScreenInstrumentedTest {
     fun cancellingDiscardsTheNewAlarm() {
         openNewAlarmEditor()
 
-        compose.onNodeWithText(str(R.string.cancel)).performClick()
+        compose.onNodeWithText(str(R.string.cancel)).performScrollTo().performClick()
 
         compose.awaitText(str(R.string.no_alarm))
         assertTrue(storedAlarms().isEmpty())
@@ -109,9 +110,9 @@ class AlarmEditScreenInstrumentedTest {
         openNewAlarmEditor()
 
         // Short day initials in the default locale; "M" and "W" are unambiguous.
-        compose.onAllNodesWithText("M").onFirst().performClick()
-        compose.onAllNodesWithText("W").onFirst().performClick()
-        compose.onNodeWithText(str(R.string.save)).performClick()
+        compose.onAllNodesWithText("M").onFirst().performScrollTo().performClick()
+        compose.onAllNodesWithText("W").onFirst().performScrollTo().performClick()
+        compose.onNodeWithText(str(R.string.save)).performScrollTo().performClick()
 
         val saved = awaitStoredAlarms(1).first()
         val expected = (1 shl 1) or (1 shl 3) // Monday | Wednesday, Sunday = bit 0
@@ -125,8 +126,8 @@ class AlarmEditScreenInstrumentedTest {
         val id = TestEnv.app.memoryStore.upsertAlarm(0, 8, 20, 0, 10, true)
         openEditorFor("08:20")
 
-        compose.onAllNodesWithText("M").onFirst().performClick()
-        compose.onNodeWithText(str(R.string.save)).performClick()
+        compose.onAllNodesWithText("M").onFirst().performScrollTo().performClick()
+        compose.onNodeWithText(str(R.string.save)).performScrollTo().performClick()
 
         assertTrue(
             "repeat day was not saved",
@@ -145,8 +146,8 @@ class AlarmEditScreenInstrumentedTest {
         val id = TestEnv.app.memoryStore.upsertAlarm(0, 9, 30, 0, 8, true)
         openEditorFor("09:30")
 
-        compose.onNodeWithText("8 min").assertIsDisplayed()
-        compose.onNodeWithText(str(R.string.save)).performClick()
+        compose.onNodeWithText("8 min").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.save)).performScrollTo().performClick()
 
         compose.awaitText(str(R.string.app_name))
         assertEquals(8, TestEnv.app.memoryStore.getAlarm(id)!!.snoozeMinutes)
@@ -157,7 +158,7 @@ class AlarmEditScreenInstrumentedTest {
         val id = TestEnv.app.memoryStore.upsertAlarm(0, 10, 10, 0, 10, false)
         openEditorFor("10:10")
 
-        compose.onNodeWithText(str(R.string.save)).performClick()
+        compose.onNodeWithText(str(R.string.save)).performScrollTo().performClick()
 
         compose.awaitText(str(R.string.app_name))
         assertNotNull(TestEnv.app.memoryStore.getAlarm(id))
@@ -168,11 +169,12 @@ class AlarmEditScreenInstrumentedTest {
     fun savedAlarmAppearsOnTheHomeList() {
         openNewAlarmEditor()
 
-        compose.onNodeWithText(str(R.string.save)).performClick()
+        compose.onNodeWithText(str(R.string.save)).performScrollTo().performClick()
 
         val saved = awaitStoredAlarms(1).first()
         val label = String.format(java.util.Locale.getDefault(), "%02d:%02d", saved.hour, saved.minute)
         compose.awaitText(label)
-        compose.onNodeWithText(label).assertIsDisplayed()
+        compose.onNodeWithText(label).performScrollTo().assertIsDisplayed()
     }
 }
+

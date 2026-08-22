@@ -36,13 +36,71 @@
     <string name="language_label">Idioma</string>
     <string name="language_en">Inglês</string>
     <string name="language_pt">Português</string>
+    <string name="name_hint">Ana</string>
     <string name="habits_label">Hábitos para lembrar (separados por vírgula)</string>
     <string name="habits_hint">regar as plantas, fazer café</string>
     <string name="interests_label">Seus interesses (separados por vírgula)</string>
     <string name="interests_hint">fotografia, futebol, livros</string>
     <string name="session_minutes">Duração da sessão matinal (minutos)</string>
+    <string name="pronouns_label">Como a Ana deve se referir a você?</string>
+    <string name="pronouns_neutral">Elu/delu</string>
+    <string name="pronouns_she">Ela/a dela</string>
+    <string name="pronouns_he">Ele/o dele</string>
+    <string name="tone_label">Tom da Ana</string>
+    <string name="tone_gentle">Suave</string>
+    <string name="tone_upbeat">Animada</string>
+    <string name="tone_drill">Sargento</string>
+    <string name="voice_pitch">Tom de voz</string>
+    <string name="voice_rate">Velocidade da fala</string>
+    <string name="offline_farewell">Não estou conseguindo falar com a IA agora, mas está na hora de levantar! Tenha um ótimo dia.</string>
+
+    <string name="challenge_label">Desafio para parar</string>
+    <string name="challenge_none">Nenhum</string>
+    <string name="challenge_math">Matemática</string>
+    <string name="challenge_memory">Memória</string>
+    <string name="challenge_title">Prove que você acordou</string>
+    <string name="challenge_math_prompt">Resolva para parar o alarme:</string>
+    <string name="challenge_memory_show">Memorize este código</string>
+    <string name="challenge_memory_prompt">Digite o código que você acabou de ver</string>
+    <string name="challenge_answer_hint">Sua resposta</string>
+    <string name="challenge_wrong">Quase — tente de novo</string>
+    <string name="challenge_ready">Pronto</string>
+    <string name="submit">Enviar</string>
+    <string name="no_snoozes_left">As sonecas deste alarme acabaram.</string>
+    <string name="max_snoozes_label">Máximo de sonecas (0 = ilimitado)</string>
+    <string name="ringtone_label">Som do alarme</string>
+    <string name="ringtone_pick">Escolher som</string>
+    <string name="ringtone_default">Padrão do sistema</string>
+
+    <string name="recap_title">Esta manhã</string>
+    <string name="recap_habits_label">Hábitos de hoje</string>
+    <string name="battery_title">Mantenha os alarmes confiáveis</string>
+    <string name="battery_body">Alguns celulares encerram apps de alarme durante a noite. Permitir que o AnaAlarm rode sem restrições de bateria torna os alarmes matinais bem mais confiáveis.</string>
+    <string name="battery_open">Config. de bateria</string>
+    <string name="stats_entry">Estatísticas</string>
+    <string name="stats_title">Estatísticas</string>
+    <string name="stats_recent">Sessões recentes</string>
+    <string name="stats_empty">Nenhuma sessão concluída ainda. Termine uma sessão de despertar e ela aparecerá aqui.</string>
+    <string name="stat_sessions_week">Sessões na semana</string>
+    <string name="stat_avg_duration">Duração média</string>
+    <string name="stat_tokens_week">Tokens · 7 dias</string>
+
+    <string name="widget_next_alarm">Próximo alarme</string>
+    <string name="widget_no_alarm">Nenhum alarme</string>
+    <string name="export_data">Exportar dados</string>
+    <string name="import_data">Importar dados</string>
+    <string name="export_done">Exportação criptografada salva.</string>
+    <string name="import_done">Dados importados.</string>
+    <string name="export_import_failed">Falha na exportação/importação. O arquivo pode estar danificado ou ter sido gerado por outro dispositivo.</string>
     <string name="settings_saved">Configurações salvas</string>
     <string name="saved">Salvo</string>
+    <string name="api_key_saved_hint">Chave salva e oculta. Cole uma nova somente para substituí-la.</string>
+    <string name="api_key_remove">Remover chave</string>
+
+    <string name="usage_title">Uso da IA</string>
+    <string name="usage_today">Hoje: %1$s tokens em %2$d solicitações</string>
+    <string name="usage_week">Últimos 7 dias: %1$s tokens · custo estimado %2$s</string>
+    <string name="usage_cost_note">Estimativa baseada na contagem de tokens e preços de tabela. O painel da DeepSeek sempre mostra o valor exato.</string>
 
     <string name="day_sun">Dom</string>
     <string name="day_mon">Seg</string>
@@ -67,7 +125,11 @@
     <string name="ai_error">Não consegui falar com a IA. Verifique sua chave de API e a conexão com a internet.</string>
     <string name="invalid_api_key">A DeepSeek rejeitou a chave de API. Abra as Configurações e cole uma chave válida de platform.deepseek.com.</string>
     <string name="ssl_error">Falha na conexão segura. Desative a inspeção HTTPS para api.deepseek.com ou use uma rede sem interceptação.</string>
-    <string name="network_error">Erro de rede ao falar com a DeepSeek. Verifique se o emulador/dispositivo tem internet.</string>
+    <string name="network_error">Erro de rede ao falar com a DeepSeek. Verifique se este dispositivo tem internet.</string>
+    <string name="notification_channel_alarms">Alarmes</string>
+    <string name="notification_channel_alarms_desc">Alertas de alarme em tela cheia</string>
+    <string name="notification_channel_session">Sessão de alarme</string>
+    <string name="notification_channel_session_desc">Conversa matinal em andamento</string>
     <string name="type_fallback_hint">Digite sua resposta aqui (voz indisponível)…</string>
     <string name="type_fallback_switch">Não estou te ouvindo. Use a caixa de texto para responder.</string>
     <string name="type_instead">Digitar</string>

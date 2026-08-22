@@ -9,12 +9,13 @@ import org.junit.Test
 class LatencyMetricsTest {
 
     @Test
-    fun wireNamesCoverTheFourUserVisibleLatencySpans() {
+    fun wireNamesCoverTheUserVisibleLatencySpans() {
         assertEquals(
             listOf(
                 "alarm_to_first_audio",
                 "asr_start_to_final",
                 "model_request_to_completion",
+                "model_request_to_first_text",
                 "tts_request_to_start"
             ),
             LatencyMetric.entries.map { it.wireName }

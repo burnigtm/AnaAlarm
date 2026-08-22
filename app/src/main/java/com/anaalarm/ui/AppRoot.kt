@@ -14,11 +14,13 @@ import androidx.compose.ui.platform.LocalContext
 import com.anaalarm.ui.alarm.AlarmEditScreen
 import com.anaalarm.ui.home.HomeScreen
 import com.anaalarm.ui.settings.SettingsScreen
+import com.anaalarm.ui.stats.StatsScreen
 
 private sealed interface Screen {
     data object Home : Screen
     data class AlarmEdit(val alarmId: Long) : Screen
     data object Settings : Screen
+    data object Stats : Screen
 }
 
 @Composable
@@ -31,6 +33,7 @@ fun AppRoot() {
             onEditAlarm = { id -> screen = Screen.AlarmEdit(id) },
             onAddAlarm = { screen = Screen.AlarmEdit(-1L) },
             onSettings = { screen = Screen.Settings },
+            onStats = { screen = Screen.Stats },
             onRequestAlarmPermission = {
                 requestExactAlarmPermission(context)
             },
@@ -43,6 +46,9 @@ fun AppRoot() {
             onBack = { screen = Screen.Home }
         )
         is Screen.Settings -> SettingsScreen(
+            onBack = { screen = Screen.Home }
+        )
+        is Screen.Stats -> StatsScreen(
             onBack = { screen = Screen.Home }
         )
     }

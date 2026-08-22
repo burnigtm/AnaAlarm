@@ -1,13 +1,22 @@
 package com.anaalarm.ai
 
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import retrofit2.HttpException
+import retrofit2.Response
 import java.io.IOException
 import java.security.cert.CertPathValidatorException
 import javax.net.ssl.SSLHandshakeException
 
 class ApiErrorMapperTest {
+
+    private fun httpException(code: Int): HttpException =
+        HttpException(
+            Response.error<Any>(code, "error body".toResponseBody("text/plain".toMediaType()))
+        )
 
     @Test
     fun `ssl handshake maps to ssl error`() {
@@ -33,6 +42,21 @@ class ApiErrorMapperTest {
             "network error",
             ApiErrorMapper.fromThrowable(IOException("connection reset")).message
         )
+    }
+
+    @Test
+    fun `http 401 maps to invalid api key`() {
+        assertEquals("invalid api key", ApiErrorMapper.fromThrowable(httpException(401)).message)
+    }
+
+    @Test
+    fun `http 429 maps to a typed rate limited error`() {
+        assertEquals("rate limited", ApiErrorMapper.fromThrowable(httpException(429)).message)
+    }
+
+    @Test
+    fun `other http codes keep the generic form`() {
+        assertEquals("HTTP 500", ApiErrorMapper.fromThrowable(httpException(500)).message)
     }
 
     @Test

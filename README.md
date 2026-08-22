@@ -73,7 +73,12 @@ includes the most recent prior-day log so Ana can carry a thread forward.
 |---|---|
 | Exact alarms | Scheduled through `AlarmManager.setAlarmClock()`, the strongest alarm API: it survives Doze, is exempt from idle batching, and shows up in the system's "next alarm" affordance |
 | Repeat days | Any combination of weekdays, stored as a 7-bit mask (bit 0 = Sunday … bit 6 = Saturday) |
-| Snooze | 1–30 minutes per alarm, exposed as a real action on alarm-started wake-up sessions |
+| Snooze | 1–30 minutes per alarm, exposed as a real action on alarm-started wake-up sessions; an optional per-alarm cap (0–5) survives reboots and pre-unlock snoozes |
+| Stop challenge | Optional per-alarm proof-of-wakefulness before Stop works: a mental-math question or a memorized 4-digit code, generated locally with zero API cost |
+| Custom sound | Per-alarm alarm tone via the system ringtone picker; falls back to the system default (and to the immediate generated tone) whenever it cannot be resolved |
+| Morning recap | The home screen shows what you said this morning plus a tappable habit checklist with live streaks; active streaks are celebrated inside the next wake-up prompt |
+| Statistics | A local stats screen shows sessions this week, average duration, recent sessions, and 7-day token usage — all from the on-device ledger |
+| Home-screen widget | A compact next-alarm widget (framework RemoteViews) that always mirrors the system's registered next alarm |
 | Enable/disable | Per-alarm switch; disabling cancels the pending system alarm immediately |
 | Boot and clock-change survival | A minimal device-protected alarm mirror re-arms enabled alarms at locked boot without opening Room, DataStore, credentials, voice, or AI; it reconciles with Room after unlock and also handles app updates, time/time-zone changes, and exact-alarm permission grants |
 | Full-screen wake | A foreground service posts a full-screen-intent notification and launches the wake-up activity over the lock screen |
@@ -98,6 +103,8 @@ includes the most recent prior-day log so Ana can carry a thread forward.
 | Habits | Comma-separated; Ana asks about them naturally during the session |
 | Interests | Comma-separated; Ana brings them up as conversation topics |
 | Session length | 5–15 minutes before she wraps up |
+| Tone & voice | Gentle / cheerful / drill-sergeant energy plus voice pitch and speech-rate sliders |
+| Data export | One-tap encrypted export/import of logs, habits, sessions, and preferences (never the API key) |
 
 ## 4. How it works under the hood
 
@@ -173,10 +180,12 @@ AnaAlarm/
 ├── gradle.properties             # JVM args, AndroidX flags, test-platform switches
 ├── gradlew / gradlew.bat         # Gradle wrapper (no global Gradle needed)
 ├── local.properties              # sdk.dir — machine specific, NOT committed
-├── .github/workflows/android.yml # Host, API 26/API 36, and signed-release CI gates
+├── .github/workflows/android.yml # GitHub Actions CI/signing mirror (not Origin-native)
+├── CONTRIBUTING.md               # Origin-primary remotes, Windows/WSL Origin, CI mirror push
 ├── scripts/
+│   ├── push-ci-mirror.ps1          # Push HEAD to the GitHub Actions/signing mirror
 │   ├── run-instrumented-tests.ps1  # One-command Windows on-device test run
-│   └── ci/                         # Linux device runner and signed-release smoke helpers
+│   └── ci/                         # Device, release-smoke, and internal APK verification helpers
 ├── docs/                         # Architecture, AI, alarms, localization, testing, troubleshooting
 └── app/
     ├── build.gradle.kts          # Module config and dependencies
@@ -230,10 +239,23 @@ sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
 
 ### Clone
 
+**Cursor Origin is the source of truth.** GitHub is the CI and signing mirror.
+The Origin CLI is not supported on native Windows — use WSL. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for remotes, `origin auth login`, and
+`.\scripts\push-ci-mirror.ps1`.
+
+Clone from Origin (WSL after `origin auth login`):
+
 ```bash
-git clone https://github.com/burnigtm/AnaAlarm.git
+origin repo clone acidburn/AnaAlarm
 cd AnaAlarm
+git remote add github https://github.com/burnigtm/AnaAlarm.git
 ```
+
+Equivalent git URL: `https://origin.cursor.com/acidburn/AnaAlarm.git`.
+Repo page: https://cursor.com/codebase/acidburn/AnaAlarm.
+GitHub (`https://github.com/burnigtm/AnaAlarm.git`) is only the CI/signing
+mirror — add it as the `github` remote, not as `origin`.
 
 ### Debug build
 
@@ -263,6 +285,16 @@ Everything after that is incremental.
 ```
 
 Output: `app/build/outputs/apk/release/app-release-unsigned.apk`
+
+### Ready-to-install CI build
+
+Successful trusted `main` runs **on the GitHub CI mirror** can publish a signed, minified
+**AnaAlarm Internal** APK after the Host, API 26, and API 36 checks all pass and the signing
+environment's approval gate is satisfied. Origin-only pushes do not produce that artifact.
+It uses the separate package `com.anaalarm.internal`, so it can coexist with a production
+installation. See
+[CI and installable APK builds](docs/CI_AND_INSTALLABLE_BUILDS.md) for download, checksum,
+installation, update, retention, and signing-key details.
 
 ### Android App Bundle (for the Play Store)
 
@@ -389,7 +421,12 @@ adb connect <phone-ip>:5555
 > Release minification is enabled. Keep the kotlinx-serialization and Retrofit rules in
 > `app/proguard-rules.pro`, and run a signed-release smoke test before shipping.
 
-### D. Play Store notes specific to this app
+### D. Play Store notes (out of scope)
+
+Google Play publishing is **not a current project goal**. `versionCode` is `1`, CI does not
+build an AAB, and [docs/PLAY_RELEASE_CHECKLIST.md](docs/PLAY_RELEASE_CHECKLIST.md) is parked
+until an owner explicitly revives it. The notes below are retained only so a future Play
+attempt does not start from zero.
 
 - **Alarm apps get privileged permissions, but you must justify them.** `SCHEDULE_EXACT_ALARM`
   and `USE_FULL_SCREEN_INTENT` both require a declaration in the Play Console explaining that
@@ -406,8 +443,18 @@ adb connect <phone-ip>:5555
 
 `assembleRelease` produces an unsigned release APK unless you supply the signing configuration
 described above. Sign it before hosting it anywhere. Users must enable "Install unknown apps"
-for their browser or file manager. Keep the same keystore forever — Android refuses to update
-an app whose signature changed.
+for their browser or file manager. Keep each package's signing key stable and backed up - Android
+refuses to update an app whose signature changed.
+
+For tester convenience, the **GitHub Actions** workflow on the CI mirror also publishes a
+separately signed `com.anaalarm.internal` APK. Origin pushes do not run that job until the
+same commit is pushed to GitHub (`.\scripts\push-ci-mirror.ps1`). Its internal key must never
+be used for the production package or Google Play. See
+[docs/CI_AND_INSTALLABLE_BUILDS.md](docs/CI_AND_INSTALLABLE_BUILDS.md).
+
+Play Store listing, Console declarations, and a production AAB are **out of scope** for
+current development (`versionCode` remains `1`). See
+[docs/PLAY_RELEASE_CHECKLIST.md](docs/PLAY_RELEASE_CHECKLIST.md).
 
 ## 10. First run and configuration
 
@@ -581,18 +628,23 @@ Longer explanations for each of these: [docs/TROUBLESHOOTING.md](docs/TROUBLESHO
 - **The DeepSeek Responses API is used statelessly.** `previous_response_id` and `conversation`
   are not supported in this integration, so the last 20 messages are re-sent on every turn. Long
   sessions therefore cost more per turn than a server-side-threaded API would.
-- **The in-app language setting does not re-localize the interface.** It drives the TTS voice,
-  the recognition language and the language Ana replies in. The UI itself follows the device
+- **Google Play publishing is out of scope.** `versionCode` is `1`; the Play checklist is a
+  future owner task, not a current release path.
+- **The in-app language setting localizes the interface on Android 13+.** It always drives the
+  TTS voice, the recognition language and the language Ana replies in; from Android 13 the UI
+  itself follows it too via per-app locales. On older versions the UI follows the device
   language, using `values/` and `values-pt-rBR/`.
 - **Speech recognition depends on Google services.** Devices without them fall back to typing.
 - **Full-screen intents are OEM-dependent.** Some manufacturers restrict them regardless of the
   granted permission; the ringing-notification fallback exists for exactly this case.
-- **Streaming speech is not implemented yet.** Model responses are bounded but still complete
-  before TTS begins. The semantic Responses SSE parser, phrase queue, ordering, cancellation, and
-  rollout contract are specified in
+- **Streaming speech ships behind a disabled-by-default flag.** The Responses SSE transport,
+  phrase segmenter, and QUEUE_ADD phrase queue are implemented and fixture-tested
+  (`streamingEnabled` setting); the default path remains bounded complete responses. The design
+  contract is specified in
   [docs/RELIABILITY_AND_LATENCY.md](docs/RELIABILITY_AND_LATENCY.md#responses-streaming-and-phrase-level-tts-overlap).
-- **No in-app usage or cost display.** The key is validated per request; check your balance on
-  the DeepSeek dashboard.
+- **In-app usage display is an estimate.** Settings shows tokens and an estimated cost computed
+  from provider-reported token counts and list prices; your DeepSeek dashboard always shows the
+  exact billed amount.
 - **Single user, single device.** No accounts, no sync, no backup/restore of conversation history.
 
 ## 18. Extending the app
@@ -612,10 +664,13 @@ Longer explanations for each of these: [docs/TROUBLESHOOTING.md](docs/TROUBLESHO
 | Document | Contents |
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Module map, thread model, session lifecycle, data model, error strategy |
+| [docs/ENHANCEMENTS.md](docs/ENHANCEMENTS.md) | The 2026 enhancement program: streaming, usage dashboard, persona, challenges, habits, widget, export |
 | [docs/AI_INTEGRATION.md](docs/AI_INTEGRATION.md) | Responses API usage, prompt design, memory model, token/cost behaviour |
 | [docs/ALARM_SYSTEM.md](docs/ALARM_SYSTEM.md) | Scheduling, permissions, receivers, per-Android-version caveats |
 | [docs/LOCALIZATION.md](docs/LOCALIZATION.md) | How languages work and how to add one |
 | [docs/TESTING.md](docs/TESTING.md) | Automated suites, how to run them, and the manual QA checklist |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Origin-primary remotes, GitHub CI mirror, Windows/WSL Origin CLI |
+| [docs/CI_AND_INSTALLABLE_BUILDS.md](docs/CI_AND_INSTALLABLE_BUILDS.md) | GitHub Actions gates, APK download, signing, mirroring from Origin |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Symptom-by-symptom fixes |
 | [docs/RELIABILITY_AND_LATENCY.md](docs/RELIABILITY_AND_LATENCY.md) | Reliability invariants, latency budget, telemetry, and deferred streaming work |
 | [docs/SUPPLY_CHAIN.md](docs/SUPPLY_CHAIN.md) | Strict dependency verification/locking and pinned CI-action maintenance |

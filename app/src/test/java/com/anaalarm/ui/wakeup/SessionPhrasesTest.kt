@@ -34,4 +34,34 @@ class SessionPhrasesTest {
         assertFalse(SessionPhrases.isStopPhrase("I slept well"))
         assertFalse(SessionPhrases.isStopPhrase("vou regar as plantas"))
     }
+
+    @Test
+    fun `short tokens inside longer sentences do not end the session`() {
+        assertFalse(SessionPhrases.isStopPhrase("vou para o trabalho"))
+        assertFalse(SessionPhrases.isStopPhrase("I haven't done my stretches"))
+        assertFalse(SessionPhrases.isStopPhrase("I have not done that yet"))
+        assertFalse(SessionPhrases.isStopPhrase("please don't stop talking"))
+        assertFalse(SessionPhrases.isStopPhrase("I can't stop thinking about today"))
+        assertFalse(SessionPhrases.isStopPhrase("I don't want to get up"))
+        assertFalse(SessionPhrases.isStopPhrase("get up later maybe"))
+        assertFalse(SessionPhrases.isStopPhrase("say bye to mom"))
+        assertFalse(SessionPhrases.isStopPhrase("chega de café"))
+    }
+
+    @Test
+    fun `punctuation around a standalone command still matches`() {
+        assertTrue(SessionPhrases.isStopPhrase("Stop!"))
+        assertTrue(SessionPhrases.isStopPhrase("   STOP   "))
+        assertTrue(SessionPhrases.isStopPhrase("para."))
+        assertTrue(SessionPhrases.isStopPhrase("done"))
+        assertTrue(SessionPhrases.isStopPhrase("get up"))
+    }
+
+    @Test
+    fun `longer wake phrases still match with surrounding words`() {
+        assertTrue(SessionPhrases.isStopPhrase("ok, time to get up"))
+        assertTrue(SessionPhrases.isStopPhrase("Goodbye Ana"))
+        assertTrue(SessionPhrases.isStopPhrase("já acordei"))
+        assertTrue(SessionPhrases.isStopPhrase("pode parar agora"))
+    }
 }

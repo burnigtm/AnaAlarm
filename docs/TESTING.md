@@ -62,12 +62,17 @@ Linux and CI use the equivalent helper (the API argument enables capability-awar
 bash scripts/ci/run-instrumented-tests.sh 36
 ```
 
-GitHub Actions is configured with two gates. Host checks run unit tests, compile Android tests,
-build debug and minified release APKs, and lint both variants. The device matrix is configured to
-boot API 26 and API 36 emulators and execute the complete instrumented suite on each. API 36 also
-creates a one-day, CI-only signing key, signs the minified release APK, verifies its signature,
-installs it, and launches `MainActivity`. The key and signed APK are deleted when the smoke step
-exits. A successful workflow run—not this configuration alone—is the execution evidence.
+GitHub Actions on the **CI mirror** exposes three quality checks plus one gated distribution
+check. Origin pushes do not run them until the same commit is pushed to GitHub
+(`.\scripts\push-ci-mirror.ps1`). Host checks run
+unit tests, compile Android tests, build debug and minified release APKs, and lint every variant.
+They also build the internal variant and rehearse the real packaging/verifier with a disposable
+one-day key, so pull requests test the distribution path without receiving the stable key.
+The device matrix boots API 26 and API 36 emulators and executes the complete instrumented suite
+on each. API 36 also uses one-day disposable keys to sign, verify, install, and cold-launch both
+the minified production-shaped release APK and the exact `com.anaalarm.internal` variant. It
+checks both processes stay alive, then deletes the keys and signed APKs. A successful workflow
+run—not this configuration alone—is the execution evidence.
 
 Before the aggregate device suite, CI runs the alarm scheduler, boot receiver, notification, and
 end-to-end firing classes as a required group. That group must report exactly 34 tests and exactly
@@ -80,10 +85,18 @@ regular PendingIntent, preserving the device-protected mirror and exercising the
 recovery path.
 
 ```text
-host: test + compile androidTest → debug/release build → debug/release lint
-device: API 26 instrumented suite
-        API 36 instrumented suite → ephemeral signed release install/launch
+Host:   test + compile androidTest -> builds -> ephemeral packaging rehearsal -> lint --+
+API 26: required + aggregate instrumented suites --------------------------------------+--> Installable APK
+API 36: suites -> ephemeral release + exact internal install/launch --------------------+
 ```
+
+`Installable APK` runs only after all three quality checks pass on a trusted `main` push or
+manual-main run and the signing environment's approval gate is satisfied. Its fresh runner
+downloads the Host-built unsigned input and runs no Gradle or build task before the reviewed
+signing helper executes. It publishes a stable-key, minified
+`com.anaalarm.internal` APK for 30 days and never exposes signing secrets to pull requests. The
+complete trigger, artifact, installation, checksum, signing, and rotation contract is documented in
+[`CI_AND_INSTALLABLE_BUILDS.md`](CI_AND_INSTALLABLE_BUILDS.md).
 
 Every CI dependency resolution uses strict checksum verification and dependency locks. See
 [`SUPPLY_CHAIN.md`](SUPPLY_CHAIN.md) before updating Gradle dependencies or workflow actions.
@@ -185,13 +198,29 @@ release-gate failure rather than a green no-op.
 | `ai/DeepSeekClientTest` | Request/response contract over MockWebServer on the JVM |
 | `ai/ConversationEngineTest` | Session orchestration with a mocked client |
 | `data/MemoryStoreTest` | Repository logic with fakes |
-| `data/AnaDatabaseMigrationTest` | Host-side real SQLite 1→4 preservation and current-index validation |
+| `data/AnaDatabaseMigrationTest` | Host-side real SQLite 1→7 preservation and current-index validation |
 | `data/SettingsListsTest`, `data/SettingsStoreSanitizeTest` | List join/split and secret sanitising |
 | `data/AlarmEntityTest` | Derived `timeMinutes` |
 | `ui/home/HomeViewModelTest` | Toggle/delete side effects on the scheduler and store |
 | `ui/wakeup/SessionPhrasesTest` | Stop-phrase matching |
 | `telemetry/LatencyMetricsTest`, `ai/DeepSeekClientTest` telemetry cases | Stable metric schema/sanitization, call-scoped capture, exactly-once alarm/TTS boundaries, and one model terminal event across success, retry, provider failure, deadline, and caller cancellation |
 | `voice/RecognitionGenerationTest`, `voice/TtsRequestGenerationTest`, `voice/UtteranceRegistryTest` | Stale/cancelled ASR and TTS request/callback rejection |
+
+Enhancement-program additions (see [ENHANCEMENTS.md](ENHANCEMENTS.md)):
+
+| Class | Covers |
+|---|---|
+| `ai/stream/SseParserTest` | Frame splitting, multi-line data joins, keep-alive comments, CRLF/CR chunk boundaries, size caps, trailing dispatch |
+| `ai/stream/ResponsesStreamDecoderTest` | Sequence validation, event/type matching, `[DONE]` rejection, terminal semantics, unknown-event tolerance |
+| `ai/stream/PhraseSegmenterTest` | 24/72/160-char rules, surrogate safety, decimals, whitespace-only deltas, tail flush |
+| `ai/stream/StreamingTurnCoordinatorTest` | Flush-then-append ordering, bounded backpressure, settle gating, late/duplicate callbacks, cancellation, fallback gating |
+| `ai/DeepSeekClientStreamTest` | SSE contract over MockWebServer: happy path with usage, EOF-without-terminal, failed/incomplete terminals, protocol and content-type failures, cancellation |
+| `alarm/DismissalChallengesTest` | Math ranges/self-consistency, memory codes, answer tolerance, type-code fallback |
+| `data/StreakCalculatorTest` | Consecutive-day chains, today-pending behavior, gaps/unmarks, independence, bad dates |
+| `data/DataExportTest` | Structural credential exclusion, encrypted round trip, damaged-file rejection, merge restore (fake cipher; Robolectric has no KeyStore) |
+| `data/PronounsTest`, `ui/AppLocalesTest` | Pronoun form mapping and BCP-47 tag mapping |
+| `voice/OrderedUtteranceRegistryTest` | Ordered per-turn registry: start/finish round trips, per-turn clearing, audibility counts |
+| `ai/DebugTlsTest` | Debug TLS hook remains a strict pass-through |
 
 ---
 
@@ -212,7 +241,8 @@ release, ideally spanning a real night.
 - [ ] App opens to Home with the warm morning theme and the "AnaAlarm" top bar.
 - [ ] Notification permission prompt appears (Android 13+).
 - [ ] Microphone permission prompt appears.
-- [ ] Home shows "No alarm set" when the list is empty.
+- [ ] Home shows a **Next alarm** card when at least one alarm is enabled, and hides it when
+      the list is empty or every alarm is disabled.
 - [ ] With exact-alarm permission missing, the warning card appears, **Grant permission** opens
       the system screen, and the card disappears when the app resumes after granting.
 - [ ] On Android 14+, the full-screen-intent card behaves the same way.

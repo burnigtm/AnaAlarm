@@ -38,7 +38,9 @@ Saving persists the choice and immediately reconfigures the shared TTS manager (
 - `app/src/main/res/values/strings.xml` — English (default)
 - `app/src/main/res/values-pt-rBR/strings.xml` — Brazilian Portuguese
 
-Every UI text goes through `context.getString(R.string.…)` or `stringResource(R.string.…)` in Compose — there are **no hardcoded strings** in code (numeric formats like `"%02d:%02d"` are locale-safe via `Locale.getDefault()`).
+Every UI text goes through `context.getString(R.string.…)` or `stringResource(R.string.…)` in Compose,
+including notification channel titles. Numeric formats like `"%02d:%02d"` are locale-safe via
+`Locale.getDefault()`. The Settings **language chip does not** change which `values*` folder is used.
 
 ## 4. Non-string localization points
 
@@ -79,9 +81,14 @@ Compare-Object $en $pt
 
 ## 7. Testing language switching
 
+The Settings language chip does **not** re-localize the Compose UI. UI strings follow the
+**device locale** (`values/` vs `values-pt-rBR/`). The chip only changes TTS, speech
+recognition, and the language Ana replies in. That is the product contract; do not write tests
+that expect Home/Settings chrome to switch when the chip is saved.
+
 1. Settings → choose **Português** → Save.
-2. The whole UI (home, alarm editor, settings, wake-up screen) must switch immediately.
+2. Confirm the UI language is unchanged unless the device locale is already pt-BR.
 3. Tap **Test wake-up session** — Ana must greet you in Portuguese, and TTS must speak pt-BR (a Google pt-BR voice must be installed on the device).
 4. Answer in Portuguese; the AI must stay in Portuguese (prompt enforcement + your input language).
-5. Say "acordei" — the session must end.
+5. Say "acordei" as a complete utterance — the session must end. Ordinary sentences such as "vou para o trabalho" must not.
 6. Repeat for English.

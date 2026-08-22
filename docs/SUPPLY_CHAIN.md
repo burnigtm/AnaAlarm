@@ -1,7 +1,7 @@
 # Build supply-chain controls
 
 AnaAlarm treats workflow code and downloaded build artifacts as release inputs. CI uses four
-complementary controls:
+complementary controls **on the GitHub Actions mirror** (Origin does not run these jobs):
 
 1. Every GitHub Action is referenced by a full immutable commit SHA. A nearby comment records the
    reviewed release tag.
@@ -31,6 +31,8 @@ metadata:
 ./gradlew testDebugUnitTest compileDebugAndroidTestKotlin \
   assembleDebug assembleRelease lintDebug lintRelease \
   --write-verification-metadata sha256 --no-parallel
+./gradlew assembleInternal lintInternal \
+  --write-verification-metadata sha256 --no-parallel
 ```
 
 On Windows, replace `./gradlew` with `.\gradlew.bat`.
@@ -53,6 +55,8 @@ Then run the complete gate without write flags:
 ./gradlew testDebugUnitTest compileDebugAndroidTestKotlin \
   assembleDebug assembleRelease lintDebug lintRelease \
   --dependency-verification=strict --no-parallel
+./gradlew assembleInternal lintInternal \
+  --dependency-verification=strict --no-parallel
 ```
 
 Commit dependency declarations, locks, and verification metadata together. A CI failure saying a
@@ -62,7 +66,8 @@ not a reason to weaken strict mode.
 ## Updating a workflow action
 
 Start from the action's primary upstream repository and review the proposed release notes and
-diff. Resolve the release tag to a commit with GitHub CLI; annotated tags require dereferencing the
+diff. Resolve the release tag to a commit with GitHub CLI against the **action's** GitHub
+repository (this is upstream GitHub, not AnaAlarm Origin). Annotated tags require dereferencing the
 returned tag object until the object type is `commit`:
 
 ```bash
@@ -83,14 +88,41 @@ Current reviewed pins are:
 | `gradle/actions` | v6.2.0 | `3f131e8634966bd73d06cc69884922b02e6faf92` |
 | `ReactiveCircus/android-emulator-runner` | v2.38.0 | `a421e43855164a8197daf9d8d40fe71c6996bb0d` |
 | `actions/upload-artifact` | v7.0.1 | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` |
+| `actions/download-artifact` | v8.0.1 | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` |
 
-## Release-smoke signing
+## Ephemeral API 36 release-smoke signing
 
 `scripts/ci/smoke-release.sh` generates its key inside `RUNNER_TEMP`, gives it one-day validity,
 signs only the already-minified release APK, verifies the result with `apksigner`, and removes the
 key and signed APK on exit. This proves installability and launch behavior without placing a
-reusable signing secret or distributable CI APK in the repository or workflow artifacts.
+reusable signing secret or distributable smoke APK in the repository or workflow artifacts.
 
-Primary references: [Gradle dependency verification](https://docs.gradle.org/current/userguide/dependency_verification.html),
+## Stable internal-distribution signing
+
+The separate `Installable APK` job publishes `com.anaalarm.internal` only after all three quality
+checks pass on trusted `main` and the environment approval gate is satisfied. Host builds and
+rehearses the minified unsigned APK without secrets, then uploads it as short-lived intermediate
+input. The signer starts on a fresh runner, downloads that input, and runs no Gradle or build task;
+the reviewed signing helper executes from the approved commit. One shell step receives the
+`internal-distribution` secrets, reconstructs the PKCS12 key in runner temporary storage, signs
+through `apksigner` environment-password inputs, checks the configured and version-controlled
+certificate fingerprints plus manifest identity, and deletes the key
+before upload. The upload step receives none of the signing secrets; it still uses GitHub's normal
+short-lived runtime token on the CI mirror. Origin never receives these secrets.
+
+The internal key is reusable so Android can update an earlier internal installation, but it is
+never a Play app-signing/upload key or a production-package key. Key loss or rotation requires
+testers to uninstall the old internal package. Secret names, branch restrictions, artifact
+contents, installation, retention, offline-backup guidance, and rotation procedure are in
+[CI_AND_INSTALLABLE_BUILDS.md](CI_AND_INSTALLABLE_BUILDS.md).
+
+Remote enforcement protects `main` for administrators and other writers: the Host/API 26/API 36
+checks must pass on an up-to-date branch, review conversations must be resolved, and force-pushes
+and branch deletion are disabled. The internal environment's normal path additionally requires
+owner approval; its current GitHub setting permits an administrator to explicitly bypass that
+checkpoint.
+
+Primary references:
+[Gradle dependency verification](https://docs.gradle.org/current/userguide/dependency_verification.html),
 [Gradle dependency locking](https://docs.gradle.org/current/userguide/dependency_locking.html), and
 [GitHub secure use of full-length action SHAs](https://docs.github.com/en/actions/reference/security/secure-use).

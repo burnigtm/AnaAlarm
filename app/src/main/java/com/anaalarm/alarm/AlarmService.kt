@@ -15,11 +15,13 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.media.ToneGenerator
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -27,10 +29,12 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.anaalarm.AnaAlarmApp
 import com.anaalarm.R
 import com.anaalarm.telemetry.LatencyMetric
 import com.anaalarm.telemetry.LatencyMetrics
 import com.anaalarm.ui.wakeup.WakeUpActivity
+import kotlinx.coroutines.runBlocking
 import java.util.concurrent.Executors
 
 /**
@@ -67,34 +71,56 @@ class AlarmService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP || stopRequested) {
-            stopRequested = false
-            stopAlarm()
-            return START_NOT_STICKY
-        }
-
         val alarmId = intent?.getLongExtra(AlarmReceiver.EXTRA_ALARM_ID, -1L) ?: -1L
-        if (alarmId < 0L) {
-            Log.w(TAG, "Ignoring AlarmService start without a valid alarm id")
-            stopSelf(startId)
-            return START_NOT_STICKY
-        }
         val notificationId =
             Notifications.ALARM_NOTIFICATION_ID_BASE + alarmId.toInt().coerceAtLeast(0)
 
-        val fullScreenPending = activityPendingIntent(alarmId.toInt(), alarmId)
-        val contentPending = activityPendingIntent(alarmId.toInt() + 10_000, alarmId)
-
+        // The service is always launched with startForegroundService(), so startForeground()
+        // must happen unconditionally and first — including stop/invalid-id paths. Skipping it
+        // crashes the process with ForegroundServiceDidNotStartInTimeException on API 26+.
+        val contentPending = if (alarmId >= 0L) {
+            activityPendingIntent(alarmId.toInt() + 10_000, alarmId)
+        } else {
+            activityPendingIntent(0, -1L)
+        }
         val previousNotificationId = activeNotificationId
         startAsForeground(notificationId, buildSessionNotification(this, contentPending))
         if (previousNotificationId >= 0 && previousNotificationId != notificationId) {
             NotificationManagerCompat.from(this).cancel(previousNotificationId)
         }
 
+        if (intent?.action == ACTION_STOP) {
+            pendingStopForAlarmId = NO_PENDING_STOP
+            stopAlarm()
+            return START_NOT_STICKY
+        }
+
+        // A stop queued while this start was still in flight applies only to this exact alarm,
+        // and only within a short window: it exists to win the race against a start command
+        // that was already enqueued, never to suppress a genuinely fresh delivery later.
+        val pendingStop = pendingStopForAlarmId
+        val stopStillFresh =
+            SystemClock.elapsedRealtime() - pendingStopAtElapsedMs <= STOP_VALIDITY_MS
+        if (pendingStop != NO_PENDING_STOP && stopStillFresh && pendingStop == alarmId) {
+            pendingStopForAlarmId = NO_PENDING_STOP
+            stopAlarm()
+            return START_NOT_STICKY
+        }
+
+        if (alarmId < 0L) {
+            Log.w(TAG, "Ignoring AlarmService start without a valid alarm id")
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+
+        val fullScreenPending = activityPendingIntent(alarmId.toInt(), alarmId)
+        val fullContentPending = contentPending
+
         val audioAlreadyActive = fallbackActive
         val alreadyRunning = audioAlreadyActive && activeAlarmId == alarmId
         activeAlarmId = alarmId
         activeNotificationId = notificationId
+        lastStartedAlarmId = alarmId
         if (!alreadyRunning) {
             val deliveredAtNanos =
                 intent?.getLongExtra(EXTRA_DELIVERY_STARTED_NANOS, 0L) ?: 0L
@@ -116,7 +142,7 @@ class AlarmService : Service() {
             runCatching {
                 NotificationManagerCompat.from(this).notify(
                     notificationId,
-                    buildAlarmNotification(this, fullScreenPending, contentPending)
+                    buildAlarmNotification(this, fullScreenPending, fullContentPending)
                 )
             }.onFailure { Log.w(TAG, "Unable to publish full-screen alarm notification", it) }
         } else {
@@ -161,8 +187,7 @@ class AlarmService : Service() {
         // service main path. The generated tone remains active if the provider is slow or fails.
         startGeneratedTone()
 
-        val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val alarmUri = resolveAlarmSound(alarmId)
         if (alarmUri == null) return
 
         ringtoneExecutor.execute {
@@ -181,10 +206,37 @@ class AlarmService : Service() {
             }.onSuccess {
                 handler.post { attachPreparedPlayer(preparationToken, player) }
             }.onFailure { error ->
-                Log.e(TAG, "Default alarm sound failed; keeping generated tone", error)
+                Log.e(TAG, "Configured alarm sound failed; keeping generated tone", error)
                 runCatching { player.release() }
             }
         }
+    }
+
+    /**
+     * Per-alarm custom sound when one is configured, else the system default chain. The
+     * credential-protected row is consulted only after unlock; before that the device-protected
+     * mirror carries the reference. Resolution runs on the ringtone executor, never the main
+     * path — the generated tone is already audible while this happens.
+     */
+    private fun resolveAlarmSound(alarmId: Long): Uri? {
+        val app = applicationContext as? AnaAlarmApp
+        val custom: String? = if (app != null && app.isUserUnlocked() && app.ensureCredentialStorage()) {
+            runCatching {
+                runBlocking { app.memoryStore.getAlarm(alarmId)?.ringtoneUri }
+            }.getOrNull()
+        } else {
+            null
+        } ?: app?.let { application ->
+            runCatching {
+                application.alarmScheduler.directBootSnapshot(alarmId)?.ringtoneUri
+            }.getOrNull()
+        }
+        if (custom.isNullOrBlank()) {
+            return RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        }
+        return runCatching { Uri.parse(custom) }.getOrNull()
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
     }
 
     private fun attachPreparedPlayer(
@@ -409,8 +461,30 @@ class AlarmService : Service() {
         private const val EXTRA_DELIVERY_STARTED_NANOS = "extra_delivery_started_nanos"
         private const val STOP_REQUEST_CODE = 69_999
 
+        /** Sentinel meaning "no stop request is queued". */
+        private const val NO_PENDING_STOP = Long.MIN_VALUE
+
+        /**
+         * How long a queued stop may suppress a matching start. Covers the original race
+         * (stop pressed just before the service finished starting) while guaranteeing a stale
+         * request can never silence a genuinely fresh delivery minutes/hours later.
+         */
+        private const val STOP_VALIDITY_MS = 15_000L
+
+        /**
+         * Alarm id whose delivery should be suppressed if its start command is still queued.
+         * Always a concrete id: [-1] callers are resolved against [lastStartedAlarmId] so a
+         * queued stop can never match an unrelated future alarm.
+         */
         @Volatile
-        private var stopRequested = false
+        private var pendingStopForAlarmId: Long = NO_PENDING_STOP
+
+        @Volatile
+        private var pendingStopAtElapsedMs: Long = 0L
+
+        /** Most recent alarm id this service actually started ringing for. */
+        @Volatile
+        private var lastStartedAlarmId: Long = NO_PENDING_STOP
 
         @Volatile
         private var fallbackActiveForTest = false
@@ -432,7 +506,11 @@ class AlarmService : Service() {
             alarmId: Long,
             deliveredAtNanos: Long = LatencyMetrics.nowNanos()
         ) {
-            stopRequested = false
+            // A fresh delivery for this alarm supersedes a stale queued stop for the same id,
+            // while stops queued for other alarms remain pending.
+            if (pendingStopForAlarmId == alarmId) {
+                pendingStopForAlarmId = NO_PENDING_STOP
+            }
             val intent = Intent(context, AlarmService::class.java)
                 .setAction(ACTION_START)
                 .putExtra(AlarmReceiver.EXTRA_ALARM_ID, alarmId)
@@ -446,11 +524,20 @@ class AlarmService : Service() {
 
         /**
          * Stops sound, vibration, foreground state and the ongoing alarm notification.
-         * Safe to call repeatedly, including just before the service has finished starting.
+         * [alarmId] scopes the request to one alarm so an overlapping delivery for another
+         * alarm is not silenced; [-1] matches any alarm. Safe to call repeatedly, including
+         * just before the service has finished starting.
          */
         @SuppressLint("ImplicitSamInstance")
-        fun stop(context: Context) {
-            stopRequested = true
+        fun stop(context: Context, alarmId: Long = -1L) {
+            // Resolve the legacy "any alarm" request against whatever this process last rang
+            // for, so every queued stop is exact-id scoped and can never suppress an unrelated
+            // future delivery. When nothing has run yet there is nothing to queue.
+            val effective = if (alarmId >= 0L) alarmId else lastStartedAlarmId
+            if (effective != NO_PENDING_STOP) {
+                pendingStopForAlarmId = effective
+                pendingStopAtElapsedMs = SystemClock.elapsedRealtime()
+            }
             context.stopService(Intent(context, AlarmService::class.java))
         }
 

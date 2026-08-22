@@ -69,7 +69,7 @@ class DeepSeekClientInstrumentedTest {
 
         val reply = client.respond(instructions, input)
 
-        assertEquals("Good morning! How did you sleep?", reply)
+        assertEquals("Good morning! How did you sleep?", reply.text)
     }
 
     @Test
@@ -77,7 +77,7 @@ class DeepSeekClientInstrumentedTest {
         setApiKey("sk-test")
         server.enqueueStructuredReply("Time to get up, sunshine.")
 
-        assertEquals("Time to get up, sunshine.", client.respond(instructions, input))
+        assertEquals("Time to get up, sunshine.", client.respond(instructions, input).text)
     }
 
     @Test
@@ -149,7 +149,7 @@ class DeepSeekClientInstrumentedTest {
         server.enqueueReply("Recovered")
         server.enqueueReply("Recovered") // spare, in case OkHttp replays the request itself
 
-        assertEquals("Recovered", client.respond(instructions, input))
+        assertEquals("Recovered", client.respond(instructions, input).text)
         assertTrue(server.requestCount >= 1)
     }
 
@@ -172,3 +172,4 @@ class DeepSeekClientInstrumentedTest {
         assertEquals("set(len=13)", DeepSeekClient.maskKey("sk-1234567890"))
     }
 }
+

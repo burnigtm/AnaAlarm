@@ -19,6 +19,7 @@ captures/
 # Signing material — never commit these
 *.jks
 *.keystore
+*.p12
 keystore.properties
 release/
 
@@ -32,7 +33,11 @@ adb-instrument.log
 *-test-run*.log
 emulator*.log
 build-wakeup.png
+/artifacts/
 
 # Secrets
 secrets.properties
 .env
+
+# JVM crash diagnostics
+hs_err_pid*.log

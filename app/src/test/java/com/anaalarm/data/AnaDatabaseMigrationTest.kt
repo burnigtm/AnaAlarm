@@ -27,7 +27,7 @@ class AnaDatabaseMigrationTest {
     }
 
     @Test
-    fun `migration one to four preserves data and creates retention indexes`() = runTest {
+    fun `migration one to seven preserves data and creates retention indexes`() = runTest {
         context.deleteDatabase(TEST_DATABASE)
         createVersionOneDatabase().use { helper ->
             helper.writableDatabase.apply {
@@ -48,24 +48,24 @@ class AnaDatabaseMigrationTest {
             .addMigrations(
                 AnaDatabase.MIGRATION_1_2,
                 AnaDatabase.MIGRATION_2_3,
-                AnaDatabase.MIGRATION_3_4
+                AnaDatabase.MIGRATION_3_4,
+                AnaDatabase.MIGRATION_4_5,
+                AnaDatabase.MIGRATION_5_6,
+                AnaDatabase.MIGRATION_6_7
             )
             .allowMainThreadQueries()
             .build()
 
         try {
-            assertEquals(6, migrated.alarmDao().getById(7)?.hour)
+            // The v1 alarm row survives with the v6 defaults: no challenge, unlimited snoozes.
+            val migratedAlarm = migrated.alarmDao().getById(7)!!
+            assertEquals(6, migratedAlarm.hour)
+            assertEquals(0, migratedAlarm.challengeType)
+            assertEquals(0, migratedAlarm.maxSnoozes)
+            assertEquals(null, migratedAlarm.ringtoneUri)
             assertEquals(
                 "still here",
                 migrated.messageDao().getSessionMessages(123).single().content
-            )
-
-            migrated.dailyLogDao().upsert(
-                DailyLogEntity(date = "2026-08-02", summary = "migration succeeded")
-            )
-            assertEquals(
-                "migration succeeded",
-                migrated.dailyLogDao().getByDate("2026-08-02")?.summary
             )
 
             assertIndexExists(migrated.openHelper.readableDatabase, "index_daily_logs_date")
@@ -74,6 +74,45 @@ class AnaDatabaseMigrationTest {
                 "index_messages_sessionId_timestamp"
             )
             assertIndexExists(migrated.openHelper.readableDatabase, "index_messages_timestamp")
+
+            // The v5 tables are live after migrating from a version-1 file.
+            migrated.usageDao().insert(
+                UsageEntity(
+                    date = "2026-08-02",
+                    sessionId = 123L,
+                    inputTokens = 10,
+                    outputTokens = 4,
+                    cachedTokens = 2,
+                    totalTokens = 14,
+                    timestamp = 1L
+                )
+            )
+            val summary = migrated.usageDao().summarySince("2026-08-01")
+            assertEquals(14L, summary.totalTokens)
+            assertEquals(1, summary.requests)
+
+            migrated.sessionRecordDao().insert(
+                SessionRecordEntity(startedAt = 1L, endedAt = 5L, durationMs = 4L, turns = 2)
+            )
+            assertEquals(2, migrated.sessionRecordDao().getRecent(10).single().turns)
+
+            assertIndexExists(migrated.openHelper.readableDatabase, "index_usage_date")
+
+            // The v7 habit ledger is live and enforces one row per (name, date).
+            migrated.habitEventDao().upsert(
+                HabitEventEntity(name = "water plants", date = "2026-08-02", done = true)
+            )
+            migrated.habitEventDao().upsert(
+                HabitEventEntity(name = "water plants", date = "2026-08-02", done = false)
+            )
+            assertEquals(
+                1,
+                migrated.habitEventDao().getByDate("2026-08-02").size
+            )
+            assertIndexExists(
+                migrated.openHelper.readableDatabase,
+                "index_habit_events_name_date"
+            )
         } finally {
             migrated.close()
         }
@@ -124,3 +163,4 @@ class AnaDatabaseMigrationTest {
         const val TEST_DATABASE = "anaalarm-jvm-migration-test.db"
     }
 }
+

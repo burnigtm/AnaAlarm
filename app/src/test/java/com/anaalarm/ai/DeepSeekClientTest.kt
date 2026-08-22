@@ -111,8 +111,13 @@ class DeepSeekClientTest {
                 )
         )
 
-        val text = client.respond("Be Ana", listOf(ChatMessageItem("user", "hi")))
-        assertEquals("Good morning!", text)
+        val reply = client.respond("Be Ana", listOf(ChatMessageItem("user", "hi")))
+        assertEquals("Good morning!", reply.text)
+        // Provider-reported usage must reach the caller for the usage dashboard.
+        assertEquals(120L, reply.usage?.inputTokens)
+        assertEquals(18L, reply.usage?.outputTokens)
+        assertEquals(138L, reply.usage?.totalTokens)
+        assertEquals(90L, reply.usage?.inputTokenDetails?.cachedTokens)
 
         val recorded = server.takeRequest()
         assertEquals("Bearer test-key", recorded.getHeader("Authorization"))
@@ -213,7 +218,7 @@ class DeepSeekClientTest {
             )
         )
 
-        assertEquals("Recovered", client.respond("sys", emptyList()))
+        assertEquals("Recovered", client.respond("sys", emptyList()).text)
         assertEquals(2, server.requestCount)
     }
 
@@ -267,6 +272,10 @@ class DeepSeekClientTest {
         assertEquals(1, server.requestCount)
     }
 
+    /** Streaming is out of scope for the legacy-path tests; any call here is a test bug. */
+    private fun unsupportedStream(): okhttp3.ResponseBody =
+        error("createResponseStream must not be called by this test")
+
     @Test
     fun `successful request emits exactly one completed model metric`() = runTest {
         val events = mutableListOf<LatencyEvent>()
@@ -275,10 +284,15 @@ class DeepSeekClientTest {
                 authorization: String,
                 request: ResponsesRequest
             ) = completedResponse("Good morning")
+
+            override suspend fun createResponseStream(
+                authorization: String,
+                request: ResponsesRequest
+            ): okhttp3.ResponseBody = unsupportedStream()
         }
 
         LatencyMetrics.withEventSink(LatencyEventSink { events.add(it) }) {
-            assertEquals("Good morning", newClient(api = fakeApi).respond("sys", emptyList()))
+            assertEquals("Good morning", newClient(api = fakeApi).respond("sys", emptyList()).text)
         }
 
         assertSingleModelEvent(events, outcome = "completed", attempts = 1)
@@ -297,10 +311,15 @@ class DeepSeekClientTest {
                 if (calls == 1) throw IOException("connection reset")
                 return completedResponse("Recovered")
             }
+
+            override suspend fun createResponseStream(
+                authorization: String,
+                request: ResponsesRequest
+            ): okhttp3.ResponseBody = unsupportedStream()
         }
 
         LatencyMetrics.withEventSink(LatencyEventSink { events.add(it) }) {
-            assertEquals("Recovered", newClient(api = fakeApi).respond("sys", emptyList()))
+            assertEquals("Recovered", newClient(api = fakeApi).respond("sys", emptyList()).text)
         }
 
         assertEquals(2, calls)
@@ -315,6 +334,11 @@ class DeepSeekClientTest {
                 authorization: String,
                 request: ResponsesRequest
             ) = ResponsesResponse(status = "failed")
+
+            override suspend fun createResponseStream(
+                authorization: String,
+                request: ResponsesRequest
+            ): okhttp3.ResponseBody = unsupportedStream()
         }
 
         val error = try {
@@ -338,6 +362,11 @@ class DeepSeekClientTest {
                 authorization: String,
                 request: ResponsesRequest
             ): ResponsesResponse = awaitCancellation()
+
+            override suspend fun createResponseStream(
+                authorization: String,
+                request: ResponsesRequest
+            ): okhttp3.ResponseBody = unsupportedStream()
         }
 
         val error = try {
@@ -365,6 +394,11 @@ class DeepSeekClientTest {
                 enteredApi.complete(Unit)
                 awaitCancellation()
             }
+
+            override suspend fun createResponseStream(
+                authorization: String,
+                request: ResponsesRequest
+            ): okhttp3.ResponseBody = unsupportedStream()
         }
 
         LatencyMetrics.withEventSink(LatencyEventSink { events.add(it) }) {

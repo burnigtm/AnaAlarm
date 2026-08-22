@@ -30,13 +30,14 @@ enum class TtsState { INITIALIZING, READY, FAILED, SHUTDOWN }
  * matched by utterance ID, so a delayed callback from a flushed utterance cannot advance a newer
  * conversation turn.
  */
-class TtsManager(context: Context) {
+class TtsManager(context: Context) : TurnSpeaker {
 
     private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
     private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val state = MutableStateFlow(TtsState.INITIALIZING)
     private val utterances = UtteranceRegistry()
+    private val queuedUtterances = OrderedUtteranceRegistry()
     private val requestGeneration = TtsRequestGeneration()
 
     private var pendingSpeak: SpeakRequest? = null
@@ -124,6 +125,7 @@ class TtsManager(context: Context) {
                 mainHandler.removeCallbacks(it.watchdog)
                 if (!it.started) it.onStartMissing("cancelled")
             }
+            clearQueuedEntries(queuedUtterances.clearAll(), "cancelled")
             if (::tts.isInitialized) runCatching { tts.stop() }
             abandonAudioFocus()
         }
@@ -142,6 +144,7 @@ class TtsManager(context: Context) {
                 mainHandler.removeCallbacks(it.watchdog)
                 if (!it.started) it.onStartMissing("shutdown")
             }
+            clearQueuedEntries(queuedUtterances.clearAll(), "shutdown")
             if (::tts.isInitialized) {
                 runCatching { tts.stop() }
                 runCatching { tts.shutdown() }
@@ -266,13 +269,154 @@ class TtsManager(context: Context) {
     }
 
     private fun finishUtterance(id: String, stopAudio: Boolean, noStartOutcome: String) {
-        val active = utterances.finish(id) ?: return
-        mainHandler.removeCallbacks(active.watchdog)
-        if (!active.started) active.onStartMissing(noStartOutcome)
+        val single = utterances.finish(id)
+        if (single != null) {
+            mainHandler.removeCallbacks(single.watchdog)
+            if (!single.started) single.onStartMissing(noStartOutcome)
+            if (stopAudio) runCatching { tts.stop() }
+            abandonAudioFocusIfIdle()
+            mainHandler.post(single.onComplete)
+            return
+        }
+        val queued = queuedUtterances.finish(id) ?: return
+        mainHandler.removeCallbacks(queued.watchdog)
+        if (!queued.started) queued.onStartMissing(noStartOutcome)
         if (stopAudio) runCatching { tts.stop() }
-        abandonAudioFocus()
-        mainHandler.post(active.onComplete)
+        // Focus and the raised music volume must survive between phrases of one streaming turn;
+        // they are released only when the last outstanding utterance finishes.
+        abandonAudioFocusIfIdle()
+        mainHandler.post(queued.onComplete)
     }
+
+    /**
+     * Speaks one phrase appended after any audio already queued for this streaming turn.
+     * Ordering is guaranteed by the platform queue; callbacks are matched by utterance id so a
+     * late callback from an earlier phrase can never complete a newer one.
+     */
+    override fun speakQueued(
+        text: String,
+        turnId: Long,
+        sequence: Int,
+        flush: Boolean,
+        onStart: () -> Unit,
+        completion: () -> Unit
+    ) {
+        val request = QueuedPhraseRequest(
+            text = text.trim(),
+            turnId = turnId,
+            sequence = sequence,
+            flush = flush,
+            generation = requestGeneration.current()
+        )
+        val run = { acceptQueued(request, onStart, completion) }
+        if (Looper.myLooper() == Looper.getMainLooper()) run() else mainHandler.post(run)
+    }
+
+    /** Cancels every unsaid phrase of one streaming turn; already-audible speech is untouched. */
+    override fun cancelQueuedTurn(turnId: Long) {
+        val cancel = {
+            clearQueuedEntries(queuedUtterances.clearTurn(turnId), "cancelled")
+            if (::tts.isInitialized) runCatching { tts.stop() }
+            abandonAudioFocusIfIdle()
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) cancel() else mainHandler.post(cancel)
+    }
+
+    private fun acceptQueued(
+        request: QueuedPhraseRequest,
+        onStart: () -> Unit,
+        completion: () -> Unit
+    ) {
+        if (!requestGeneration.isCurrent(request.generation)) return
+        when (state.value) {
+            TtsState.READY -> doSpeakQueued(request, onStart, completion)
+            // A queued phrase arriving during init is dropped: streaming turns start only after
+            // readiness was observed by the coordinator, so late init-state arrivals are stale.
+            else -> Unit
+        }
+    }
+
+    private fun doSpeakQueued(
+        request: QueuedPhraseRequest,
+        onStart: () -> Unit,
+        completion: () -> Unit
+    ) {
+        if (request.text.isEmpty()) {
+            mainHandler.post(completion)
+            return
+        }
+        requestAudioFocus()
+        ensureAudibleMusicVolume()
+        val id = "turn${request.turnId}-seq${request.sequence}"
+        val watchdog = Runnable {
+            Log.w(TAG, "TTS watchdog fired on queued phrase id=$id")
+            finishUtterance(id, stopAudio = true, noStartOutcome = "watchdog")
+        }
+        queuedUtterances.register(
+            OrderedUtteranceRegistry.Entry(
+                id = id,
+                turnId = request.turnId,
+                sequence = request.sequence,
+                onStart = { startedAudioAtNanos ->
+                    recordQueuedStart(request, startedAudioAtNanos)
+                    onStart.invoke()
+                },
+                onComplete = completion,
+                watchdog = watchdog,
+                onStartMissing = { outcome ->
+                    Log.w(TAG, "queued phrase id=$id finished without start ($outcome)")
+                    recordQueuedStart(request, outcome)
+                }
+            )
+        )
+
+        val params = Bundle().apply {
+            putString(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC.toString())
+            putString(TextToSpeech.Engine.KEY_PARAM_VOLUME, "1.0")
+        }
+        Log.i(TAG, "speakQueued len=${request.text.length} id=$id flush=${request.flush}")
+        // The turn's first phrase flushes prior audio; later phrases append so earlier speech is
+        // never cut mid-sentence.
+        val queueMode =
+            if (request.flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+        val result = tts.speak(request.text, queueMode, params, id)
+        if (result == TextToSpeech.ERROR) {
+            Log.e(TAG, "tts.speak(QUEUE_ADD) returned ERROR id=$id")
+            finishUtterance(id, stopAudio = false, noStartOutcome = "enqueue_failed")
+            return
+        }
+
+        val timeoutMs = (2_500L + request.text.length * 80L).coerceIn(4_000L, 45_000L)
+        mainHandler.postDelayed(watchdog, timeoutMs)
+    }
+
+    private fun recordQueuedStart(request: QueuedPhraseRequest, startedAudioAtNanos: Long) {
+        request.startLatency.recordAt(
+            endedAtNanos = startedAudioAtNanos,
+            outcome = "started",
+            "characters" to request.text.length,
+            "request_id" to queuedRequestId(request.turnId, request.sequence),
+            "sequence" to request.sequence
+        )
+    }
+
+    private fun recordQueuedStart(request: QueuedPhraseRequest, outcome: String) {
+        request.startLatency.record(
+            outcome = outcome,
+            "characters" to request.text.length,
+            "request_id" to queuedRequestId(request.turnId, request.sequence),
+            "sequence" to request.sequence
+        )
+    }
+
+    private fun clearQueuedEntries(entries: List<OrderedUtteranceRegistry.Entry>, outcome: String) {
+        entries.forEach { entry ->
+            mainHandler.removeCallbacks(entry.watchdog)
+            if (!entry.started) entry.onStartMissing(outcome)
+        }
+    }
+
+    private fun queuedRequestId(turnId: Long, sequence: Int): Long = turnId * 100_000L + sequence
 
     private fun wireListener() {
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -280,7 +424,10 @@ class TtsManager(context: Context) {
                 val id = utteranceId ?: return
                 val startedAudioAtNanos = LatencyMetrics.nowNanos()
                 mainHandler.post {
-                    val callback = utterances.markStarted(id) ?: return@post
+                    // Streaming turns register in the ordered registry; legacy speech in the
+                    // single-active one. A callback id resolves against whichever owns it.
+                    val callback = utterances.markStarted(id) ?: queuedUtterances.markStarted(id)
+                        ?: return@post
                     Log.i(TAG, "onStart id=$id")
                     callback.invoke(startedAudioAtNanos)
                 }
@@ -407,6 +554,16 @@ class TtsManager(context: Context) {
         raisedMusicVolume = null
     }
 
+    /** Releases focus only when no utterance — single or queued — is still outstanding. */
+    private fun abandonAudioFocusIfIdle() {
+        if (utterances.hasActive() || queuedUtterances.outstandingCount() > 0 ||
+            pendingSpeak != null && pendingSpeak!!.text.isNotEmpty()
+        ) {
+            return
+        }
+        abandonAudioFocus()
+    }
+
     private fun cancelInitWatchdog() {
         initWatchdog?.let { mainHandler.removeCallbacks(it) }
         initWatchdog = null
@@ -433,6 +590,19 @@ class TtsManager(context: Context) {
         val generation: Long,
         val requestId: Long,
         val requestedAtNanos: Long,
+        val startLatency: LatencyBoundary = LatencyBoundary(
+            metric = LatencyMetric.TTS_REQUEST_TO_START,
+            startedAtNanos = requestedAtNanos
+        )
+    )
+
+    private data class QueuedPhraseRequest(
+        val text: String,
+        val turnId: Long,
+        val sequence: Int,
+        val flush: Boolean,
+        val generation: Long,
+        val requestedAtNanos: Long = LatencyMetrics.nowNanos(),
         val startLatency: LatencyBoundary = LatencyBoundary(
             metric = LatencyMetric.TTS_REQUEST_TO_START,
             startedAtNanos = requestedAtNanos
@@ -499,4 +669,8 @@ internal class UtteranceRegistry {
         active = null
         return entry
     }
+
+    /** True while an utterance has been accepted but not yet finished. */
+    @Synchronized
+    fun hasActive(): Boolean = active != null
 }

@@ -36,13 +36,71 @@
     <string name="language_label">Language</string>
     <string name="language_en">English</string>
     <string name="language_pt">Português</string>
+    <string name="name_hint">Ana</string>
     <string name="habits_label">Habits to remind (comma separated)</string>
     <string name="habits_hint">water the plants, make coffee</string>
     <string name="interests_label">Your interests (comma separated)</string>
     <string name="interests_hint">photography, soccer, books</string>
     <string name="session_minutes">Wake-up session length (minutes)</string>
+    <string name="pronouns_label">How should Ana refer to you?</string>
+    <string name="pronouns_neutral">They/them</string>
+    <string name="pronouns_she">She/her</string>
+    <string name="pronouns_he">He/him</string>
+    <string name="tone_label">Ana\'s tone</string>
+    <string name="tone_gentle">Gentle</string>
+    <string name="tone_upbeat">Cheerful</string>
+    <string name="tone_drill">Drill sergeant</string>
+    <string name="voice_pitch">Voice pitch</string>
+    <string name="voice_rate">Speech rate</string>
+    <string name="offline_farewell">I can\'t reach the AI right now, but it is time to get up! Have a great morning.</string>
+
+    <string name="challenge_label">Stop challenge</string>
+    <string name="challenge_none">None</string>
+    <string name="challenge_math">Math</string>
+    <string name="challenge_memory">Memory</string>
+    <string name="challenge_title">Prove you\'re awake</string>
+    <string name="challenge_math_prompt">Solve to stop the alarm:</string>
+    <string name="challenge_memory_show">Memorize this code</string>
+    <string name="challenge_memory_prompt">Type the code you just saw</string>
+    <string name="challenge_answer_hint">Your answer</string>
+    <string name="challenge_wrong">Not quite — try again</string>
+    <string name="challenge_ready">I\'m ready</string>
+    <string name="submit">Submit</string>
+    <string name="no_snoozes_left">No snoozes left for this alarm.</string>
+    <string name="max_snoozes_label">Max snoozes (0 = unlimited)</string>
+    <string name="ringtone_label">Alarm sound</string>
+    <string name="ringtone_pick">Choose sound</string>
+    <string name="ringtone_default">System default</string>
+
+    <string name="recap_title">This morning</string>
+    <string name="recap_habits_label">Today\'s habits</string>
+    <string name="battery_title">Keep alarms reliable</string>
+    <string name="battery_body">Some phones aggressively stop alarm apps overnight. Allowing AnaAlarm to run without battery restrictions makes morning alarms far more dependable.</string>
+    <string name="battery_open">Battery settings</string>
+    <string name="stats_entry">Statistics</string>
+    <string name="stats_title">Statistics</string>
+    <string name="stats_recent">Recent sessions</string>
+    <string name="stats_empty">No completed sessions yet. Finish a wake-up session and it will appear here.</string>
+    <string name="stat_sessions_week">Sessions this week</string>
+    <string name="stat_avg_duration">Avg session</string>
+    <string name="stat_tokens_week">Tokens · 7 days</string>
+
+    <string name="widget_next_alarm">Next alarm</string>
+    <string name="widget_no_alarm">No alarm set</string>
+    <string name="export_data">Export data</string>
+    <string name="import_data">Import data</string>
+    <string name="export_done">Encrypted export saved.</string>
+    <string name="import_done">Data imported.</string>
+    <string name="export_import_failed">Export/import failed. The file may be damaged or from another device key.</string>
     <string name="settings_saved">Settings saved</string>
     <string name="saved">Saved</string>
+    <string name="api_key_saved_hint">Key is saved and hidden. Paste a new key only to replace it.</string>
+    <string name="api_key_remove">Remove key</string>
+
+    <string name="usage_title">AI usage</string>
+    <string name="usage_today">Today: %1$s tokens across %2$d requests</string>
+    <string name="usage_week">Last 7 days: %1$s tokens · estimated cost %2$s</string>
+    <string name="usage_cost_note">Estimate from token counts and list prices. Your DeepSeek dashboard always shows the exact amount.</string>
 
     <string name="day_sun">Sun</string>
     <string name="day_mon">Mon</string>
@@ -67,7 +125,11 @@
     <string name="ai_error">I could not reach the AI. Please check your API key and internet connection.</string>
     <string name="invalid_api_key">DeepSeek rejected the API key. Open Settings and paste a valid key from platform.deepseek.com.</string>
     <string name="ssl_error">Secure connection failed. Disable HTTPS inspection for api.deepseek.com or use a network without interception.</string>
-    <string name="network_error">Network error talking to DeepSeek. Check that the emulator/device has internet access.</string>
+    <string name="network_error">Network error talking to DeepSeek. Check that this device has internet access.</string>
+    <string name="notification_channel_alarms">Alarms</string>
+    <string name="notification_channel_alarms_desc">Wake-up alarm full-screen alerts</string>
+    <string name="notification_channel_session">Alarm session</string>
+    <string name="notification_channel_session_desc">Ongoing wake-up conversation</string>
     <string name="type_fallback_hint">Type your answer here (voice is unavailable)…</string>
     <string name="type_fallback_switch">I cannot hear you. Use the text box to answer.</string>
     <string name="type_instead">Type instead</string>

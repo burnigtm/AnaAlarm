@@ -14,6 +14,7 @@ internal enum class LatencyMetric(val wireName: String) {
     ALARM_TO_FIRST_AUDIO("alarm_to_first_audio"),
     ASR_START_TO_FINAL("asr_start_to_final"),
     MODEL_REQUEST_TO_COMPLETION("model_request_to_completion"),
+    MODEL_REQUEST_TO_FIRST_TEXT("model_request_to_first_text"),
     TTS_REQUEST_TO_START("tts_request_to_start")
 }
 

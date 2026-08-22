@@ -29,9 +29,16 @@ class AnaAlarmApp : Application() {
     @Volatile
     private var deepSeekClientInstance: DeepSeekClient? = null
     val deepSeekClient: DeepSeekClient
-        get() = deepSeekClientInstance ?: synchronized(this) {
-            deepSeekClientInstance ?: DeepSeekClient(settingsStore).also {
-                deepSeekClientInstance = it
+        get() {
+            // settingsStore/memoryStore are lateinit and only valid after first unlock; a caller
+            // reaching the AI stack before that is a programming error worth failing on loudly.
+            check(credentialStorageReady) {
+                "AI stack accessed before ensureCredentialStorage() (device still locked?)"
+            }
+            return deepSeekClientInstance ?: synchronized(this) {
+                deepSeekClientInstance ?: DeepSeekClient(settingsStore).also {
+                    deepSeekClientInstance = it
+                }
             }
         }
 

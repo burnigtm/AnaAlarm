@@ -1,9 +1,12 @@
 # Play release and alarm reliability checklist
 
-This checklist records the evidence required before publishing AnaAlarm. A checked
-repository item means the implementation can be inspected in source. Device runs,
-videos, Play Console declarations, signing, and upload results are external release
-work and remain **unclaimed** until an owner attaches the requested evidence.
+**Status: out of scope.** AnaAlarm is not being submitted to Google Play. `versionCode`
+is `1`, CI does not run `bundleRelease` or `testReleaseUnitTest`, and no Play Console
+account, privacy-policy URL, Data safety form, or physical-device evidence pack is
+maintained. Keep this file as a future owner checklist; do not treat unchecked boxes as
+a current release blocker.
+
+When (if) Play is revived, start from the items below. Until then they stay unclaimed.
 
 Status convention:
 
@@ -31,6 +34,10 @@ Run the complete matrix on **one physical API 26 device** and **one physical API
 device**. Emulator results are useful additional evidence but do not replace these
 two physical runs. Use the signed candidate build and clear app data before each
 API-level run.
+
+The workflow's `AnaAlarm Internal` APK is useful for day-to-day tester installation, but it has a
+different application ID and dedicated internal key. It is not the production-signed candidate,
+Play AAB, or final release evidence requested below.
 
 For every row attach: device model, Android build/fingerprint, app version and
 version code, timezone, exact-alarm/full-screen/notification permission state,

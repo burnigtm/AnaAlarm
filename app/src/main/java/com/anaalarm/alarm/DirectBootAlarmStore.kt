@@ -17,7 +17,13 @@ internal data class DirectBootAlarm(
     val minute: Int,
     val days: Int,
     val snoozeMinutes: Int,
-    val enabledForRearm: Boolean = true
+    val enabledForRearm: Boolean = true,
+    /** Snoozes already taken this firing; survives reboots and pre-unlock snoozes. */
+    val snoozeCount: Int = 0,
+    /** Maximum snoozes per firing; 0 means unlimited. */
+    val maxSnoozes: Int = 0,
+    /** Custom alarm sound reference; null keeps the system default. */
+    val ringtoneUri: String? = null
 ) {
     init {
         require(id >= 0L) { "alarm id must be non-negative" }
@@ -26,6 +32,8 @@ internal data class DirectBootAlarm(
         require(days in 0..0b1111111) { "repeat mask out of range: $days" }
         require(snoozeMinutes > 0) { "snooze duration must be positive" }
         require(enabledForRearm || days == 0) { "only a one-shot may be retired" }
+        require(snoozeCount >= 0) { "snooze count must be non-negative" }
+        require(maxSnoozes >= 0) { "max snoozes must be non-negative" }
     }
 }
 
@@ -60,12 +68,20 @@ internal class DirectBootAlarmStore(
         allLocked().filterNot { it.enabledForRearm }.sortedBy { it.id }
     }
 
-    /** Writes one enabled snapshot and clears any older retirement marker for the same id. */
+    /** Writes one enabled snapshot, preserving any in-flight snooze count for the same id. */
     fun upsert(alarm: DirectBootAlarm) = synchronized(preferences) {
+        val existing = get(alarm.id)
         commitOrThrow(
             preferences.edit().putString(
                 key(alarm.id),
-                encode(alarm.copy(enabledForRearm = true))
+                encode(
+                    alarm.copy(
+                        enabledForRearm = true,
+                        // schedule()/reconcile rewrites must not erase an active snooze chain;
+                        // only the explicit post-fire reset zeroes the counter.
+                        snoozeCount = existing?.snoozeCount ?: alarm.snoozeCount
+                    )
+                )
             )
         )
     }
@@ -83,19 +99,46 @@ internal class DirectBootAlarmStore(
     }
 
     /**
-     * Makes the device-protected enabled set exactly match Room after unlock.
-     * Retired snapshots are intentionally preserved until Room retirement is acknowledged.
+     * Makes the device-protected enabled set exactly match Room after unlock, preserving
+     * in-flight snooze counters for ids that remain enabled. Retired snapshots are
+     * intentionally preserved until Room retirement is acknowledged.
      */
     fun replaceEnabled(alarms: Collection<DirectBootAlarm>) = synchronized(preferences) {
+        val existing = allLocked().associateBy { it.id }
         val enabled = alarms.associateBy { it.id }
         val editor = preferences.edit()
         allLocked()
             .filter { it.enabledForRearm && it.id !in enabled }
             .forEach { editor.remove(key(it.id)) }
         enabled.values.forEach { alarm ->
-            editor.putString(key(alarm.id), encode(alarm.copy(enabledForRearm = true)))
+            editor.putString(
+                key(alarm.id),
+                encode(
+                    alarm.copy(
+                        enabledForRearm = true,
+                        snoozeCount = existing[alarm.id]?.snoozeCount ?: alarm.snoozeCount
+                    )
+                )
+            )
         }
         commitOrThrow(editor)
+    }
+
+    /** Adds one snooze to the counter; returns the updated snapshot or null when unknown. */
+    fun incrementSnoozeCount(alarmId: Long): DirectBootAlarm? = synchronized(preferences) {
+        val current = get(alarmId) ?: return null
+        val updated = current.copy(snoozeCount = current.snoozeCount + 1)
+        commitOrThrow(preferences.edit().putString(key(alarmId), encode(updated)))
+        updated
+    }
+
+    /** Clears the snooze counter after a fresh regular delivery of the alarm. */
+    fun resetSnoozeCount(alarmId: Long): DirectBootAlarm? = synchronized(preferences) {
+        val current = get(alarmId) ?: return null
+        if (current.snoozeCount == 0) return current
+        val updated = current.copy(snoozeCount = 0)
+        commitOrThrow(preferences.edit().putString(key(alarmId), encode(updated)))
+        updated
     }
 
     internal fun clearForTest() = synchronized(preferences) {
@@ -133,7 +176,9 @@ internal class DirectBootAlarmStore(
     internal companion object {
         internal const val PREFERENCES_NAME = "direct_boot_alarms"
         private const val ALARM_KEY_PREFIX = "alarm."
-        private const val FORMAT_VERSION = "v1"
+        /** v2 adds the snooze counter and custom ringtone reference. */
+        private const val FORMAT_VERSION = "v2"
+        private const val LEGACY_FORMAT_VERSION = "v1"
         private const val ENABLED = "enabled"
         private const val RETIRED = "retired"
 
@@ -146,24 +191,44 @@ internal class DirectBootAlarmStore(
             alarm.minute,
             alarm.days,
             alarm.snoozeMinutes,
-            if (alarm.enabledForRearm) ENABLED else RETIRED
+            if (alarm.enabledForRearm) ENABLED else RETIRED,
+            alarm.snoozeCount,
+            alarm.maxSnoozes,
+            alarm.ringtoneUri.orEmpty()
         ).joinToString("|")
 
         fun decode(encoded: String): DirectBootAlarm? = runCatching {
             val parts = encoded.split('|')
-            require(parts.size == 7 && parts[0] == FORMAT_VERSION)
-            DirectBootAlarm(
-                id = parts[1].toLong(),
-                hour = parts[2].toInt(),
-                minute = parts[3].toInt(),
-                days = parts[4].toInt(),
-                snoozeMinutes = parts[5].toInt(),
-                enabledForRearm = when (parts[6]) {
-                    ENABLED -> true
-                    RETIRED -> false
-                    else -> error("unknown direct-boot alarm state")
-                }
-            )
+            when {
+                parts.size == 10 && parts[0] == FORMAT_VERSION -> DirectBootAlarm(
+                    id = parts[1].toLong(),
+                    hour = parts[2].toInt(),
+                    minute = parts[3].toInt(),
+                    days = parts[4].toInt(),
+                    snoozeMinutes = parts[5].toInt(),
+                    enabledForRearm = decodeState(parts[6]),
+                    snoozeCount = parts[7].toInt().also { require(it >= 0) },
+                    maxSnoozes = parts[8].toInt().also { require(it >= 0) },
+                    ringtoneUri = parts[9].takeIf { it.isNotEmpty() }
+                )
+                // Upgrades from the v1 mirror keep working; legacy snapshots simply have no
+                // snooze counter, cap, or custom ringtone yet.
+                parts.size == 7 && parts[0] == LEGACY_FORMAT_VERSION -> DirectBootAlarm(
+                    id = parts[1].toLong(),
+                    hour = parts[2].toInt(),
+                    minute = parts[3].toInt(),
+                    days = parts[4].toInt(),
+                    snoozeMinutes = parts[5].toInt(),
+                    enabledForRearm = decodeState(parts[6])
+                )
+                else -> error("unknown direct-boot alarm format")
+            }
         }.getOrNull()
+
+        private fun decodeState(raw: String): Boolean = when (raw) {
+            ENABLED -> true
+            RETIRED -> false
+            else -> error("unknown direct-boot alarm state")
+        }
     }
 }
