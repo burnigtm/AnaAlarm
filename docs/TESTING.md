@@ -231,6 +231,12 @@ broadcast action; it does not lock/sleep a physical device or prove speaker audi
 screen-off/locked, airplane-mode/no-key test below is therefore a release-blocking physical-device
 gate, not something the host-side suite claims to cover.
 
+> The release-blocking subset (airplane-mode/no-key audibility, screen-off/keyguard delivery on
+> API 26 + API 36 hardware, Play Console declarations) has a dedicated runbook with per-device
+> evidence capture: [RELEASE_GATE_VALIDATION.md](RELEASE_GATE_VALIDATION.md) and
+> `scripts/device-validation.{ps1,sh}`. It feeds issue #6 directly; this section covers broader
+> everyday QA beyond those gates.
+
 Automation cannot confirm that a phone in your bedroom actually wakes you. Run this before a
 release, ideally spanning a real night.
 
