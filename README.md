@@ -672,6 +672,7 @@ Longer explanations for each of these: [docs/TROUBLESHOOTING.md](docs/TROUBLESHO
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Origin-primary remotes, GitHub CI mirror, Windows/WSL Origin CLI |
 | [docs/CI_AND_INSTALLABLE_BUILDS.md](docs/CI_AND_INSTALLABLE_BUILDS.md) | GitHub Actions gates, APK download, signing, mirroring from Origin |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Symptom-by-symptom fixes |
+| [docs/RELEASE_GATE_VALIDATION.md](docs/RELEASE_GATE_VALIDATION.md) | Physical-device runbook + evidence tooling for issue #6's release gates |
 | [docs/RELIABILITY_AND_LATENCY.md](docs/RELIABILITY_AND_LATENCY.md) | Reliability invariants, latency budget, telemetry, and deferred streaming work |
 | [docs/SUPPLY_CHAIN.md](docs/SUPPLY_CHAIN.md) | Strict dependency verification/locking and pinned CI-action maintenance |
 | [docs/PLAY_RELEASE_CHECKLIST.md](docs/PLAY_RELEASE_CHECKLIST.md) | Physical-device release matrix and Play foreground/full-screen declarations |
