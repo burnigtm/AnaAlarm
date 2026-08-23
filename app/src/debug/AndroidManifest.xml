@@ -16,5 +16,14 @@
         <activity
             android:name="androidx.activity.ComponentActivity"
             android:exported="false" />
+
+        <!-- ADB-launched product-tour gallery used to capture docs/screenshots. -->
+        <activity
+            android:name=".debug.DocsGalleryActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.AnaAlarm"
+            android:launchMode="singleTop" />
     </application>
 </manifest>

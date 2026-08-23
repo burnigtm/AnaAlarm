@@ -174,6 +174,9 @@ session status (sleepy → talking → listening → thinking → happy); API er
 answers force a sad pose. Encrypted export includes the field; legacy payloads omit it and must
 not clobber a buddy the user already picked.
 
+Screenshots of the picker, recap, speaking/listening session, and both challenge dialogs are in
+[PRODUCT_TOUR.md](PRODUCT_TOUR.md).
+
 New unit suites: `AvatarsTest`, `AvatarPoseTest`, `SettingsAvatarTest`, `AvatarMoodMappingTest`,
 plus buddy cases in `PromptBuilderTest`, `DataExportTest`, and `HomeViewModelTest`. New device
 suites: `SettingsBuddyInstrumentedTest` (4), `HomeRecapBuddyInstrumentedTest` (2),

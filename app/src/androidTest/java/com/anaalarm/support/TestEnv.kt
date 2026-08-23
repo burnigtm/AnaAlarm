@@ -2,6 +2,7 @@ package com.anaalarm.support
 
 import android.app.AlarmManager
 import android.content.Context
+import android.os.Build
 import androidx.test.platform.app.InstrumentationRegistry
 import com.anaalarm.AnaAlarmApp
 import com.anaalarm.data.AlarmEntity
@@ -27,16 +28,19 @@ object TestEnv {
 
     /**
      * AlarmManager outlives the database, so cancelling only what is stored leaves earlier
-     * test alarms armed and hides later ones behind them in `nextAlarmClock`. This covers the
-     * whole id space the suite ever schedules.
+     * test alarms armed and hides later ones behind them in `nextAlarmClock`. Room autoincrement
+     * also survives `clearAllTables`, so ids walk past any small hardcoded window.
      */
-    private val scheduledIdSpace: List<Long> = ((0L..60L) + (4000L..4010L)).toList()
+    private val scheduledIdSpace: List<Long> = ((0L..500L) + (4000L..4100L)).toList()
 
     fun cancelAllScheduledAlarms() {
         runBlocking {
             runCatching {
-                app.memoryStore.getEnabledAlarms().forEach { app.alarmScheduler.cancel(it) }
+                app.memoryStore.alarms.first().forEach { app.alarmScheduler.cancel(it) }
             }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            runCatching { alarmManager.cancelAll() }
         }
         scheduledIdSpace.forEach { id ->
             runCatching { app.alarmScheduler.cancel(AlarmEntity(id = id, hour = 0, minute = 0)) }
@@ -46,7 +50,10 @@ object TestEnv {
     /** Cancels every scheduled alarm and wipes all Room tables. */
     fun clearDatabase() {
         cancelAllScheduledAlarms()
-        AnaDatabase.get(context).clearAllTables()
+        val db = AnaDatabase.get(context)
+        db.clearAllTables()
+        // Autoincrement is not a table Room clears; reset it so later tests reuse low ids.
+        runCatching { db.openHelper.writableDatabase.execSQL("DELETE FROM sqlite_sequence") }
     }
 
     /** Restores factory settings so tests never inherit another test's configuration. */

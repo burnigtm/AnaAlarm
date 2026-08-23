@@ -1,5 +1,6 @@
 package com.anaalarm.ui.avatar
 
+import android.provider.Settings
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -10,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -44,14 +46,29 @@ fun AnimalAvatar(
     contentDescription: String? = null
 ) {
     val spec = remember(species) { avatarSpec(species) }
-    val clock by rememberInfiniteTransition(label = "buddy").animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = LOOP_MS, easing = LinearEasing)
-        ),
-        label = "buddyClock"
-    )
+    val context = LocalContext.current
+    val animationsOff = remember {
+        Settings.Global.getFloat(
+            context.contentResolver,
+            Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f
+        ) == 0f
+    }
+    // Instrumented tests (and users who turn off animator duration) must not host an infinite
+    // Compose transition: it never goes idle, so waitUntil/awaitText stall after the first frame.
+    val clock = if (animationsOff) {
+        0.25f
+    } else {
+        val ticking by rememberInfiniteTransition(label = "buddy").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = LOOP_MS, easing = LinearEasing)
+            ),
+            label = "buddyClock"
+        )
+        ticking
+    }
     val canvasModifier = if (contentDescription != null) {
         modifier.semantics { this.contentDescription = contentDescription }
     } else {

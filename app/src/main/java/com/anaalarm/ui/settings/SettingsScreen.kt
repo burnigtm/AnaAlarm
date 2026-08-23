@@ -49,6 +49,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -67,13 +69,20 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false) {
     val context = LocalContext.current
     val app = context.applicationContext as AnaAlarmApp
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
 
     var loaded by remember { mutableStateOf(false) }
+    val scroll = rememberScrollState()
+    var buddyY by remember { mutableIntStateOf(0) }
+    LaunchedEffect(loaded, scrollToBuddy, buddyY) {
+        if (loaded && scrollToBuddy && buddyY > 0) {
+            scroll.scrollTo((buddyY - 16).coerceAtLeast(0))
+        }
+    }
     var apiKey by remember { mutableStateOf("") }
     var hasSavedKey by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
@@ -201,7 +210,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scroll)
                 .padding(16.dp)
         ) {
             if (!loaded) return@Column
@@ -306,24 +315,30 @@ fun SettingsScreen(onBack: () -> Unit) {
             }
 
             Spacer(Modifier.height(16.dp))
-            SectionTitle(context.getString(R.string.buddy_label))
-            Text(
-                text = context.getString(R.string.buddy_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Column(
+                modifier = Modifier.onGloballyPositioned {
+                    buddyY = it.positionInParent().y.toInt()
+                }
             ) {
-                Avatars.ALL.forEach { id ->
-                    BuddyCard(
-                        speciesId = id,
-                        selected = buddy == id,
-                        onClick = { buddy = id },
-                        modifier = Modifier.weight(1f)
-                    )
+                SectionTitle(context.getString(R.string.buddy_label))
+                Text(
+                    text = context.getString(R.string.buddy_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Avatars.ALL.forEach { id ->
+                        BuddyCard(
+                            speciesId = id,
+                            selected = buddy == id,
+                            onClick = { buddy = id },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
             }
 

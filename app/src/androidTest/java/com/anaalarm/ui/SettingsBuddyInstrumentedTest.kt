@@ -85,10 +85,8 @@ class SettingsBuddyInstrumentedTest {
         openSettings()
         scrollToBuddySection()
 
-        // The demo mood cycle flips every ~1.7 s; surviving two flips proves the Canvas
-        // recomposition path is stable inside the scrollable settings form.
-        Thread.sleep(2_200)
-        scrollToBuddySection()
+        compose.onNodeWithTag("buddy_card_cheetah").assertIsSelected()
+        compose.waitForIdle()
         compose.onNodeWithTag("buddy_card_cheetah").assertIsSelected()
     }
 

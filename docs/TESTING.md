@@ -51,6 +51,14 @@ Options:
 .\scripts\run-instrumented-tests.ps1 -SkipBuild
 ```
 
+Product-tour screenshots in `docs/screenshots/` come from a debug-only gallery activity
+that is not shipped in release:
+
+```powershell
+.\gradlew.bat :app:installDebug
+.\scripts\capture-docs-screenshots.ps1
+```
+
 Raw output is kept in `adb-instrument.log`.
 
 > The script uses `am instrument` directly for predictable device output. `connectedAndroidTest`
