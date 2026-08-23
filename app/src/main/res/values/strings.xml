@@ -50,6 +50,12 @@
     <string name="tone_gentle">Gentle</string>
     <string name="tone_upbeat">Cheerful</string>
     <string name="tone_drill">Drill sergeant</string>
+
+    <string name="buddy_label">Wake-up buddy</string>
+    <string name="buddy_desc">Your animal friend joins every morning interrogation</string>
+    <string name="buddy_cheetah">Kiko the Cheetah</string>
+    <string name="buddy_dino">Dax the Dino</string>
+    <string name="buddy_zebra">Zuri the Zebra</string>
     <string name="voice_pitch">Voice pitch</string>
     <string name="voice_rate">Speech rate</string>
     <string name="offline_farewell">I can\'t reach the AI right now, but it is time to get up! Have a great morning.</string>

@@ -27,7 +27,7 @@ test_apk="app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
 required_classes="com.anaalarm.alarm.AlarmSchedulerInstrumentedTest,com.anaalarm.alarm.BootReceiverInstrumentedTest,com.anaalarm.alarm.AlarmFiringInstrumentedTest,com.anaalarm.alarm.NotificationsInstrumentedTest"
 required_test_count=34
 required_skip_count=0
-aggregate_test_count=173
+aggregate_test_count=189
 aggregate_skip_count=0
 
 set_required_appop() {

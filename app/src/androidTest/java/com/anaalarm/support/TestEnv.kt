@@ -59,7 +59,13 @@ object TestEnv {
             habits = defaults.habits,
             interests = defaults.interests,
             sessionMinutes = defaults.sessionMinutes,
-            snoozeMinutes = defaults.snoozeMinutes
+            snoozeMinutes = defaults.snoozeMinutes,
+            pronouns = defaults.pronouns,
+            streamingEnabled = defaults.streamingEnabled,
+            tone = defaults.tone,
+            voicePitch = defaults.voicePitch,
+            voiceRate = defaults.voiceRate,
+            avatar = defaults.avatar
         )
     }
 

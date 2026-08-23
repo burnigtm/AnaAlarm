@@ -13,6 +13,7 @@ import com.anaalarm.ai.stream.StreamingTurnCoordinator
 import com.anaalarm.alarm.AlarmScheduleResult
 import com.anaalarm.alarm.AlarmService
 import com.anaalarm.alarm.DismissalChallenges
+import com.anaalarm.ui.avatar.Avatars
 import com.anaalarm.voice.SpeechListener
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -59,6 +60,9 @@ class SessionController(
         private set
     /** Non-null while a stop challenge is on screen; Stop only fires once it is solved. */
     var activeChallenge by mutableStateOf<StopChallengeUi?>(null)
+        private set
+    /** Species of the animated wake-up buddy rendered beside the conversation. */
+    var buddy by mutableStateOf(Avatars.DEFAULT)
         private set
 
     val snoozeAvailable: Boolean get() = alarmId >= 1L
@@ -129,6 +133,7 @@ class SessionController(
                 languageTag = if (settings.language == "pt") "pt-BR" else "en-US"
                 sessionMs = settings.sessionMinutes * 60_000L
                 streamingEnabled = settings.streamingEnabled
+                buddy = Avatars.from(settings.avatar)
                 stopChallengeType = if (alarmId >= 1L) {
                     runCatching {
                         DismissalChallenges.Type.from(

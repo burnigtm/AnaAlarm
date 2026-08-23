@@ -3,6 +3,7 @@ package com.anaalarm.data
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
 import com.anaalarm.support.TestEnv
+import com.anaalarm.ui.avatar.Avatars
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -42,6 +43,12 @@ class SettingsStoreInstrumentedTest {
         assertEquals(emptyList<String>(), settings.interests)
         assertEquals(10, settings.sessionMinutes)
         assertEquals(10, settings.snoozeMinutes)
+        assertEquals(Pronouns.NEUTRAL, settings.pronouns)
+        assertFalse(settings.streamingEnabled)
+        assertEquals(Tones.UPBEAT, settings.tone)
+        assertEquals(1.05f, settings.voicePitch, 0f)
+        assertEquals(1.0f, settings.voiceRate, 0f)
+        assertEquals(Avatars.DEFAULT, settings.avatar)
     }
 
     @Test
@@ -53,7 +60,13 @@ class SettingsStoreInstrumentedTest {
             habits = listOf("regar as plantas", "fazer café"),
             interests = listOf("fotografia"),
             sessionMinutes = 14,
-            snoozeMinutes = 3
+            snoozeMinutes = 3,
+            pronouns = Pronouns.SHE,
+            streamingEnabled = true,
+            tone = Tones.GENTLE,
+            voicePitch = 0.9f,
+            voiceRate = 1.1f,
+            avatar = Avatars.ZEBRA
         )
 
         val settings = read()
@@ -64,11 +77,17 @@ class SettingsStoreInstrumentedTest {
         assertEquals(listOf("fotografia"), settings.interests)
         assertEquals(14, settings.sessionMinutes)
         assertEquals(3, settings.snoozeMinutes)
+        assertEquals(Pronouns.SHE, settings.pronouns)
+        assertTrue(settings.streamingEnabled)
+        assertEquals(Tones.GENTLE, settings.tone)
+        assertEquals(0.9f, settings.voicePitch, 0f)
+        assertEquals(1.1f, settings.voiceRate, 0f)
+        assertEquals(Avatars.ZEBRA, settings.avatar)
     }
 
     @Test
     fun partialUpdatesLeaveOtherValuesUntouched() = runBlocking {
-        store.update(apiKey = "sk-keep", name = "Ana", sessionMinutes = 12)
+        store.update(apiKey = "sk-keep", name = "Ana", sessionMinutes = 12, avatar = Avatars.DINO)
 
         store.update(language = "pt")
 
@@ -77,6 +96,7 @@ class SettingsStoreInstrumentedTest {
         assertEquals("Ana", settings.name)
         assertEquals(12, settings.sessionMinutes)
         assertEquals("pt", settings.language)
+        assertEquals(Avatars.DINO, settings.avatar)
     }
 
     @Test
@@ -124,12 +144,13 @@ class SettingsStoreInstrumentedTest {
 
     @Test
     fun anotherStoreInstanceSeesThePersistedValues() = runBlocking {
-        store.update(apiKey = "sk-shared", sessionMinutes = 7)
+        store.update(apiKey = "sk-shared", sessionMinutes = 7, avatar = Avatars.ZEBRA)
 
         val second = SettingsStore(TestEnv.context)
         val settings = second.settings.first()
         assertEquals("sk-shared", settings.apiKey)
         assertEquals(7, settings.sessionMinutes)
+        assertEquals(Avatars.ZEBRA, settings.avatar)
     }
 
     @Test
@@ -150,5 +171,32 @@ class SettingsStoreInstrumentedTest {
         assertEquals(listOf("a", "b"), SettingsLists.split("a, b ,"))
         assertTrue(SettingsLists.split(null).isEmpty())
         assertTrue(SettingsLists.split("").isEmpty())
+    }
+
+    @Test
+    fun unknownAvatarIsRepairedToDefaultOnRead() = runBlocking {
+        store.update(avatar = "velociraptor")
+        assertEquals(Avatars.DEFAULT, read().avatar)
+    }
+
+    @Test
+    fun resetSettingsRestoresEveryPersistedField() = runBlocking {
+        store.update(
+            apiKey = "sk-dirty",
+            name = "Dirty",
+            language = "pt",
+            habits = listOf("x"),
+            interests = listOf("y"),
+            sessionMinutes = 15,
+            snoozeMinutes = 5,
+            pronouns = Pronouns.SHE,
+            streamingEnabled = true,
+            tone = Tones.DRILL,
+            voicePitch = 0.8f,
+            voiceRate = 1.2f,
+            avatar = Avatars.ZEBRA
+        )
+        TestEnv.resetSettings()
+        assertEquals(AppSettings(), read())
     }
 }

@@ -104,6 +104,7 @@ includes the most recent prior-day log so Ana can carry a thread forward.
 | Interests | Comma-separated; Ana brings them up as conversation topics |
 | Session length | 5–15 minutes before she wraps up |
 | Tone & voice | Gentle / cheerful / drill-sergeant energy plus voice pitch and speech-rate sliders |
+| Wake-up buddy | Animated animal (Kiko the cheetah, Dax the dino, or Zuri the zebra) on the wake-up screen, stop-challenge dialog, home recap, and in Ana's prompt |
 | Data export | One-tap encrypted export/import of logs, habits, sessions, and preferences (never the API key) |
 
 ## 4. How it works under the hood
@@ -203,7 +204,7 @@ AnaAlarm/
         │       ├── ai/              # DeepSeek client, prompt builder, engine, error mapping
         │       ├── alarm/           # Scheduler, receivers, foreground service, notifications
         │       ├── data/            # Room entities/DAOs/database, SettingsStore, MemoryStore
-        │       ├── ui/              # Compose screens, theme, wake-up session
+        │       ├── ui/              # Compose screens, theme, wake-up session, avatar rig
         │       └── voice/           # TTS manager, speech recognition wrapper
         ├── debug/res/xml/        # Debug-only network config (loopback cleartext for tests)
         ├── test/                 # Fast JVM unit tests

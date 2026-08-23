@@ -164,6 +164,22 @@ Two interactions between program changes surfaced in the on-device suite
    affected suites now `performScrollTo()` before interacting, matching real user behavior, and
    the instrumented `wrapUp` contract was aligned with the Phase-1 bounded-history change.
 
+## Follow-up: wake-up buddy
+
+A procedurally drawn animal companion (Kiko the cheetah, Dax the dino, Zuri the zebra) sits
+beside Ana on the wake-up screen, inside the stop-challenge dialog, on the home recap card, and
+in Settings as a live picker. The species is stored in DataStore (`avatar`), sanitised with
+`Avatars.from` on read, and mentioned in the system prompt at most once per session. Mood follows
+session status (sleepy → talking → listening → thinking → happy); API errors and wrong challenge
+answers force a sad pose. Encrypted export includes the field; legacy payloads omit it and must
+not clobber a buddy the user already picked.
+
+New unit suites: `AvatarsTest`, `AvatarPoseTest`, `SettingsAvatarTest`, `AvatarMoodMappingTest`,
+plus buddy cases in `PromptBuilderTest`, `DataExportTest`, and `HomeViewModelTest`. New device
+suites: `SettingsBuddyInstrumentedTest` (4), `HomeRecapBuddyInstrumentedTest` (2),
+`WakeUpBuddyInstrumentedTest` (6), `BuddyAvatarRenderInstrumentedTest` (2), and two extra
+`SettingsStoreInstrumentedTest` cases. Aggregate device lock: 173 → 189.
+
 ## Deferred intentionally
 
 - "Talk to Ana anytime" free-chat entry point (largest UI surface, least alarm value).

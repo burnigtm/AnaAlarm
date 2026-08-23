@@ -69,7 +69,8 @@ This document describes how AnaAlarm is structured, how the pieces fit together,
 | `AppRoot.kt` | Screen navigation state (Home / AlarmEdit / Settings) |
 | `home/` | Home screen + `HomeViewModel` (alarms list, delete/toggle, test-session button, permission warning) |
 | `alarm/AlarmEditScreen.kt` | Time picker, repeat-day chips, snooze slider, save/cancel |
-| `settings/SettingsScreen.kt` | API key, name, language, habits, interests, session length |
+| `settings/SettingsScreen.kt` | API key, name, language, habits, interests, session length, wake-up buddy |
+| `avatar/` | Procedural animal rig (`AnimalAvatar`), species registry (`Avatars`), mood/palette |
 | `wakeup/` | `WakeUpActivity` (full-screen), `SessionController` (conversation state machine), `WakeUpScreen` (UI) |
 | `theme/Theme.kt` | Material 3 color scheme (light + dark), warm morning palette |
 

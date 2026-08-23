@@ -11,5 +11,10 @@
                 <action android:name="com.anaalarm.action.DEBUG_FIRE_ALARM" />
             </intent-filter>
         </receiver>
+
+        <!-- Debug-only host for createComposeRule()-based Compose UI tests. -->
+        <activity
+            android:name="androidx.activity.ComponentActivity"
+            android:exported="false" />
     </application>
 </manifest>

@@ -46,12 +46,32 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.anaalarm.R
+import com.anaalarm.ui.avatar.AnimalAvatar
+import com.anaalarm.ui.avatar.AvatarMood
 import kotlinx.coroutines.delay
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 internal const val WAKE_SNOOZE_TEST_TAG = "wake_snooze_action"
 internal const val WAKE_STOP_TEST_TAG = "wake_stop_action"
+internal const val WAKE_BUDDY_TEST_TAG = "wake_buddy"
+internal const val CHALLENGE_BUDDY_TEST_TAG = "challenge_buddy"
+
+/** Maps live session state to what the buddy's face and body should be doing. */
+internal fun avatarMoodFor(status: SessionStatus): AvatarMood = when (status) {
+    SessionStatus.STARTING -> AvatarMood.SLEEPY
+    SessionStatus.SPEAKING -> AvatarMood.TALKING
+    SessionStatus.LISTENING -> AvatarMood.LISTENING
+    SessionStatus.THINKING -> AvatarMood.THINKING
+    SessionStatus.ENDED -> AvatarMood.HAPPY
+}
+
+/** Errors always win: a failed turn looks sad even if the session already ended. */
+internal fun avatarMood(status: SessionStatus, hasError: Boolean): AvatarMood =
+    if (hasError) AvatarMood.SAD else avatarMoodFor(status)
+
+private fun avatarMood(controller: SessionController): AvatarMood =
+    avatarMood(controller.status, controller.errorText != null)
 
 @Composable
 fun WakeUpScreen(controller: SessionController) {
@@ -106,6 +126,18 @@ fun WakeUpScreen(controller: SessionController) {
                 Spacer(Modifier.height(16.dp))
                 StatusPill(controller.status)
             }
+
+            // The wake-up buddy reacts live to every session state: sleepy while starting,
+            // mouth flaps while Ana speaks, perked ears while listening, a thinking pose with
+            // question bubble during model turns, and a celebration jump when the session ends.
+            AnimalAvatar(
+                species = controller.buddy,
+                mood = avatarMood(controller),
+                contentDescription = context.getString(R.string.buddy_label),
+                modifier = Modifier
+                    .size(112.dp)
+                    .testTag(WAKE_BUDDY_TEST_TAG)
+            )
 
             Column(modifier = Modifier.fillMaxWidth()) {
                 if (controller.aiText.isNotBlank()) {
@@ -261,12 +293,38 @@ private fun StopChallengeDialog(
     val context = LocalContext.current
     var typed by remember { mutableStateOf("") }
     var wrongAttempt by remember { mutableStateOf(false) }
+    // Brief buddy reactions: sad on a wrong answer, happy on success, attentive while
+    // the memory code is visible, otherwise pondering alongside the user.
+    var reaction by remember { mutableStateOf<AvatarMood?>(null) }
+
+    LaunchedEffect(reaction) {
+        if (reaction != null) {
+            delay(1300)
+            reaction = null
+        }
+    }
 
     AlertDialog(
         onDismissRequest = { controller.dismissChallenge() },
         title = { Text(context.getString(R.string.challenge_title)) },
         text = {
-            Column {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                AnimalAvatar(
+                    species = controller.buddy,
+                    mood = reaction ?: if (
+                        challenge.showingCode &&
+                        challenge.type == com.anaalarm.alarm.DismissalChallenges.Type.MEMORY
+                    ) {
+                        AvatarMood.LISTENING
+                    } else {
+                        AvatarMood.THINKING
+                    },
+                    contentDescription = context.getString(R.string.buddy_label),
+                    modifier = Modifier
+                        .size(72.dp)
+                        .testTag(CHALLENGE_BUDDY_TEST_TAG)
+                )
+                Spacer(Modifier.height(12.dp))
                 when {
                     challenge.type == com.anaalarm.alarm.DismissalChallenges.Type.MEMORY &&
                         challenge.showingCode -> {
@@ -336,7 +394,10 @@ private fun StopChallengeDialog(
                     } else {
                         if (!controller.submitChallengeAnswer(typed)) {
                             wrongAttempt = true
+                            reaction = AvatarMood.SAD
                             typed = ""
+                        } else {
+                            reaction = AvatarMood.HAPPY
                         }
                     }
                 },

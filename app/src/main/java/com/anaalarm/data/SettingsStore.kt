@@ -35,7 +35,13 @@ data class AppSettings(
     val tone: String = Tones.UPBEAT,
     /** TTS voice shaping, clamped by [com.anaalarm.voice.TtsManager] on use. */
     val voicePitch: Float = 1.05f,
-    val voiceRate: Float = 1.0f
+    val voiceRate: Float = 1.0f,
+    /**
+     * One of [com.anaalarm.ui.avatar.Avatars.ALL]; the animated wake-up buddy rendered on the
+     * wake-up screen, challenge dialog, home recap and settings previews. Parsed defensively
+     * with [com.anaalarm.ui.avatar.Avatars.from] everywhere it is consumed.
+     */
+    val avatar: String = com.anaalarm.ui.avatar.Avatars.DEFAULT
 )
 
 /** Selectable persona tones for the wake-up prompt. */
@@ -88,6 +94,7 @@ class SettingsStore internal constructor(
         val TONE = stringPreferencesKey("tone")
         val VOICE_PITCH = floatPreferencesKey("voice_pitch")
         val VOICE_RATE = floatPreferencesKey("voice_rate")
+        val AVATAR = stringPreferencesKey("avatar")
     }
 
     val settings: Flow<AppSettings> = dataStore.data.map { p ->
@@ -103,7 +110,8 @@ class SettingsStore internal constructor(
             streamingEnabled = p[Keys.STREAMING_ENABLED] ?: false,
             tone = p[Keys.TONE] ?: Tones.UPBEAT,
             voicePitch = p[Keys.VOICE_PITCH] ?: 1.05f,
-            voiceRate = p[Keys.VOICE_RATE] ?: 1.0f
+            voiceRate = p[Keys.VOICE_RATE] ?: 1.0f,
+            avatar = com.anaalarm.ui.avatar.Avatars.from(p[Keys.AVATAR])
         )
     }.flowOn(Dispatchers.IO)
 
@@ -119,7 +127,8 @@ class SettingsStore internal constructor(
         streamingEnabled: Boolean? = null,
         tone: String? = null,
         voicePitch: Float? = null,
-        voiceRate: Float? = null
+        voiceRate: Float? = null,
+        avatar: String? = null
     ) {
         var writtenSecret: CachedSecret? = null
         dataStore.edit { p ->
@@ -145,6 +154,7 @@ class SettingsStore internal constructor(
             tone?.let { p[Keys.TONE] = it }
             voicePitch?.let { p[Keys.VOICE_PITCH] = it }
             voiceRate?.let { p[Keys.VOICE_RATE] = it }
+            avatar?.let { p[Keys.AVATAR] = it }
         }
         writtenSecret?.let { cachedApiKey = it }
     }

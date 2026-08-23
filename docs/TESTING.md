@@ -77,8 +77,8 @@ run—not this configuration alone—is the execution evidence.
 Before the aggregate device suite, CI runs the alarm scheduler, boot receiver, notification, and
 end-to-end firing classes as a required group. That group must report exactly 34 tests and exactly
 zero skips on both API 26 and API 36. CI then clears both app packages, restores and verifies the
-required capabilities, and executes the complete 173-test aggregate suite from clean app data.
-That phase must also run exactly 173 tests with zero skips on the fixed Google APIs images.
+required capabilities, and executes the complete 189-test aggregate suite from clean app data.
+That phase must also run exactly 189 tests with zero skips on the fixed Google APIs images.
 Unexpected assumptions/ignores, a missing exact-alarm grant, a missing full-screen grant, or a
 zero/partial runner invocation therefore fails closed. The locked-boot cases cancel only their
 regular PendingIntent, preserving the device-protected mirror and exercising the real API-26+
@@ -145,7 +145,7 @@ release-gate failure rather than a green no-op.
 | `data/AnaDatabaseRetentionInstrumentedTest` | Reopening a real Room database invokes the production `onOpen` callback, removes expired messages, and preserves the exact cutoff and newer rows |
 | `data/AnaDatabaseMigrationInstrumentedTest` | `MigrationTestHelper` creates the actual exported v2 schema, validates v2→current, preserves all three entity types, and verifies both history/retention indexes |
 | `data/MemoryStoreInstrumentedTest` | Repository behaviour on the app's real database: alarm round-trip and in-place update, enable/disable, delete (including unknown ids), sorted flow, chronological history with limit and session scoping, bounded daily logs, and most-recent-earlier-day lookup |
-| `data/SettingsStoreInstrumentedTest`, `data/SettingsStoreRecoveryInstrumentedTest` | Encrypted-key DataStore round-trip plus settings defaults, partial updates, sanitizing, lists, durability, legacy-plaintext migration, corrupt ciphertext fail-closed behavior, and invalidated-key reset/retry |
+| `data/SettingsStoreInstrumentedTest`, `data/SettingsStoreRecoveryInstrumentedTest` | Encrypted-key DataStore round-trip plus settings defaults, partial updates, sanitizing, lists, durability, legacy-plaintext migration, corrupt ciphertext fail-closed behavior, invalidated-key reset/retry, and wake-up buddy persistence/sanitising |
 | `data/KeystoreSecretCipherInstrumentedTest` | Keystore AES-GCM ciphertext does not embed plaintext, round-trips, rejects malformed payloads, and proves old ciphertext fails closed after key loss while a replacement key works |
 
 ### Alarm subsystem
@@ -171,8 +171,12 @@ release-gate failure rather than a green no-op.
 | `ui/HomeScreenInstrumentedTest` | Empty state; stored alarms replace it; the switch disables and re-enables an alarm in the database; delete confirmation with both cancel and confirm paths; tapping a card opens the editor pre-filled; add opens the editor and cancel returns; settings navigation round-trip; disabled alarms stay listed but switched off |
 | `ui/AlarmEditScreenInstrumentedTest` | Saving a new alarm persists it and returns home; cancel discards; repeat chips map to the Sunday-first bitmask; editing updates the same row rather than inserting; stored snooze is preserved; editing a disabled alarm does not silently enable it; the saved alarm appears on the home list |
 | `ui/SettingsScreenInstrumentedTest` | Defaults on a fresh install; saving writes every field to DataStore; values are pre-filled on reopen; the language choice is remembered; leaving without saving discards; the API key is sanitised; the session-length section reflects stored state |
+| `ui/SettingsBuddyInstrumentedTest` | Settings picker lists all three species with the cheetah selected by default; tapping a card and saving persists the choice; the selection is remembered across visits |
+| `ui/HomeRecapBuddyInstrumentedTest` | Recap card hosts a small idle buddy when a daily summary exists; the node is absent when there is nothing to recap |
+| `ui/avatar/BuddyAvatarRenderInstrumentedTest` | Every species × mood combination draws on a real device without crashing, including rapid mood churn and a light-theme pass |
 | `ui/LocalizationInstrumentedTest` | Every string resolves non-blank in `en` and `pt-BR`; every user-facing string is actually translated (with an explicit shared-by-design allowlist); format placeholders survive translation; key wording; error messages name the recovery action |
 | `ui/wakeup/WakeUpSessionInstrumentedTest` | Clock/Stop, Snooze only for real alarm ids, overlapping-alarm replacement, controller retention across recreation, no-key/backend failures, full fake-AI turns, stop/wrap-up persistence and prior-day context |
+| `ui/wakeup/WakeUpBuddyInstrumentedTest` | Buddy is visible through a cold-start failure, mirrors the stored species, falls back from a corrupt value, stays on screen when Snooze is exposed, and remains inside math/memory stop-challenges without covering Stop/Snooze |
 | `ui/wakeup/SessionPhrasesInstrumentedTest` | English and Portuguese stop phrases, ordinary conversation that must not end the session, case/padding insensitivity, and self-consistency of the configured list |
 
 ### Voice
@@ -192,7 +196,7 @@ release-gate failure rather than a green no-op.
 | `alarm/AlarmSchedulerTest`, `alarm/AlarmReceiverTest` | Permission-denied scheduling remains explicitly covered alongside typed failures, private release action, distinct snooze PendingIntent, cancellation scope and post-fire routing |
 | `alarm/DirectBootAlarmStoreTest`, `alarm/BootReceiverTest` | Device-protected snapshot validation/tombstones and locked/unlocked broadcast routing |
 | `alarm/PlaybackPreparationGateTest` | Stop/restart and reverse-completion races reject stale ringtone players and release replacements before ownership changes |
-| `ai/PromptBuilderTest` | System-prompt composition from profile and context |
+| `ai/PromptBuilderTest` | System-prompt composition from profile and context, including the wake-up buddy line |
 | `ai/ResponseTextExtractorTest` | Both Responses API payload shapes and the null/blank cases |
 | `ai/ApiErrorMapperTest` | Throwable → `ApiException` mapping, including nested certificate-trust failures |
 | `ai/DeepSeekClientTest` | Request/response contract over MockWebServer on the JVM |
@@ -221,6 +225,9 @@ Enhancement-program additions (see [ENHANCEMENTS.md](ENHANCEMENTS.md)):
 | `data/PronounsTest`, `ui/AppLocalesTest` | Pronoun form mapping and BCP-47 tag mapping |
 | `voice/OrderedUtteranceRegistryTest` | Ordered per-turn registry: start/finish round trips, per-turn clearing, audibility counts |
 | `ai/DebugTlsTest` | Debug TLS hook remains a strict pass-through |
+| `ui/avatar/AvatarsTest`, `ui/avatar/AvatarPoseTest` | Species registry/fallback and mood→pose animation contract (overlays and motion ranges at every clock phase) |
+| `data/SettingsAvatarTest` | Isolated DataStore default, persistence, corrupt-species repair, and partial updates that leave the buddy alone |
+| `ui/wakeup/AvatarMoodMappingTest` | Session status → mood mapping is total; errors override every status to sad |
 
 ---
 

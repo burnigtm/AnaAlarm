@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -93,6 +95,7 @@ fun HomeScreen(
     val habitNames by vm.habitNames.collectAsState()
     val habitsDone by vm.habitsDone.collectAsState()
     val streaks by vm.streaks.collectAsState()
+    val buddy by vm.buddy.collectAsState()
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(vm) {
@@ -196,6 +199,7 @@ fun HomeScreen(
 
             recap?.let { summary ->
                 RecapCard(
+                    buddy = buddy,
                     summary = summary,
                     habitNames = habitNames,
                     habitsDone = habitsDone,
@@ -386,6 +390,7 @@ private fun BatteryWarningCard(onOpenBatterySettings: () -> Unit) {
 /** Morning recap: yesterday's durable summary plus today's tappable habit checklist. */
 @Composable
 private fun RecapCard(
+    buddy: String,
     summary: String,
     habitNames: List<String>,
     habitsDone: Set<String>,
@@ -401,12 +406,23 @@ private fun RecapCard(
         )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            if (summary.isNotBlank()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                com.anaalarm.ui.avatar.AnimalAvatar(
+                    species = buddy,
+                    mood = com.anaalarm.ui.avatar.AvatarMood.NEUTRAL,
+                    contentDescription = context.getString(R.string.buddy_label),
+                    modifier = Modifier
+                        .size(40.dp)
+                        .testTag("home_recap_buddy")
+                )
+                Spacer(Modifier.width(10.dp))
                 Text(
                     text = context.getString(R.string.recap_title),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
+            }
+            if (summary.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = summary,

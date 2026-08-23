@@ -50,6 +50,12 @@
     <string name="tone_gentle">Suave</string>
     <string name="tone_upbeat">Animada</string>
     <string name="tone_drill">Sargento</string>
+
+    <string name="buddy_label">Companheiro de despertar</string>
+    <string name="buddy_desc">Seu amigo animal participa de todos os interrogatórios matinais</string>
+    <string name="buddy_cheetah">Kiko, o Guepardo</string>
+    <string name="buddy_dino">Dax, o Dino</string>
+    <string name="buddy_zebra">Zuri, a Zebra</string>
     <string name="voice_pitch">Tom de voz</string>
     <string name="voice_rate">Velocidade da fala</string>
     <string name="offline_farewell">Não estou conseguindo falar com a IA agora, mas está na hora de levantar! Tenha um ótimo dia.</string>

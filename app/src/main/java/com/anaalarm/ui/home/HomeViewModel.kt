@@ -63,6 +63,10 @@ class HomeViewModel(
     private val _habitNames = MutableStateFlow<List<String>>(emptyList())
     val habitNames: StateFlow<List<String>> = _habitNames.asStateFlow()
 
+    /** Species id of the user's wake-up buddy, shown beside the recap. */
+    private val _buddy = MutableStateFlow(com.anaalarm.ui.avatar.Avatars.DEFAULT)
+    val buddy: StateFlow<String> = _buddy.asStateFlow()
+
     init {
         refreshRecap()
     }
@@ -76,10 +80,11 @@ class HomeViewModel(
                 .filter { it.done }
                 .map { it.name }
                 .toSet()
-            val names = runCatching {
-                settingsStore.settings.first().habits
-            }.getOrDefault(emptyList())
+            // One settings read drives both the habit list and the buddy species.
+            val stored = runCatching { settingsStore.settings.first() }.getOrNull()
+            val names = stored?.habits ?: emptyList()
             _habitNames.value = names
+            _buddy.value = com.anaalarm.ui.avatar.Avatars.from(stored?.avatar)
             _streaks.value = runCatching {
                 memory.habitStreaks(names, today)
             }.getOrDefault(emptyMap())

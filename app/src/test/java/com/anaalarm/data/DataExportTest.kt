@@ -118,4 +118,48 @@ class DataExportTest {
         assertEquals(1, memory.recentSessionRecords().size)
         assertTrue(memory.habitsForDate(day).single().done)
     }
+
+    @Test
+    fun `buddy selection round-trips through export and restore`() = runTest {
+        settingsStore.update(name = "Alex", avatar = com.anaalarm.ui.avatar.Avatars.DINO)
+
+        val original = DataExport.build(memory, settingsStore)
+        assertEquals(com.anaalarm.ui.avatar.Avatars.DINO, original.settings?.avatar)
+
+        val restoredPayload = DataExport.deserialize(DataExport.serialize(original))
+        assertEquals(original, restoredPayload)
+
+        settingsStore.update(avatar = com.anaalarm.ui.avatar.Avatars.ZEBRA)
+        DataExport.restore(restoredPayload!!, memory, settingsStore)
+        assertEquals(com.anaalarm.ui.avatar.Avatars.DINO, settingsStore.settings.first().avatar)
+    }
+
+    @Test
+    fun `exports from before the buddy feature keep the current buddy`() = runTest {
+        // A legacy payload serializes no avatar field at all; restoring it must not clobber
+        // the buddy the user already picked.
+        settingsStore.update(name = "Old", avatar = com.anaalarm.ui.avatar.Avatars.ZEBRA)
+        val legacySettings = DataExport.ExportedSettings(
+            name = "Old",
+            language = "en",
+            habits = emptyList(),
+            interests = emptyList(),
+            sessionMinutes = 10,
+            snoozeMinutes = 5,
+            pronouns = "neutral",
+            tone = "upbeat",
+            voicePitch = 1.0f,
+            voiceRate = 1.0f,
+            avatar = null
+        )
+        val payload = DataExport.Payload(exportedAtEpochMs = 2L, settings = legacySettings)
+
+        DataExport.restore(payload, memory, settingsStore)
+
+        assertEquals("Old", settingsStore.settings.first().name)
+        assertEquals(
+            com.anaalarm.ui.avatar.Avatars.ZEBRA,
+            settingsStore.settings.first().avatar
+        )
+    }
 }
