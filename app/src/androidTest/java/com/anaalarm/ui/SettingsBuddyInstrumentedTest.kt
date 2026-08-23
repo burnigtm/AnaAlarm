@@ -67,7 +67,10 @@ class SettingsBuddyInstrumentedTest {
     }
 
     private fun scrollToBuddySection() {
-        compose.onNodeWithText(str(R.string.buddy_label)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.buddy_label)).performScrollTo()
+        // The section title can land at the bottom of a Pixel 2 viewport (API 26 CI);
+        // bring a card into view so later displayed/selected assertions are on-screen.
+        compose.onNodeWithTag("buddy_card_cheetah").performScrollTo()
     }
 
     @Test
@@ -75,7 +78,7 @@ class SettingsBuddyInstrumentedTest {
         openSettings()
         scrollToBuddySection()
 
-        compose.onNodeWithTag("buddy_card_cheetah").assertIsDisplayed().assertIsSelected()
+        compose.onNodeWithTag("buddy_card_cheetah").performScrollTo().assertIsDisplayed().assertIsSelected()
         compose.onNodeWithTag("buddy_card_dino").performScrollTo().assertIsDisplayed().assertIsNotSelected()
         compose.onNodeWithTag("buddy_card_zebra").performScrollTo().assertIsDisplayed().assertIsNotSelected()
     }
