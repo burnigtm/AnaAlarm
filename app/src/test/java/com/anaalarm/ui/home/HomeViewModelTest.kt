@@ -155,4 +155,22 @@ class HomeViewModelTest {
             )
         )
     }
+
+    @Test
+    fun `buddy mirrors the avatar setting`() = runTest {
+        every { settingsStore.settings } returns flowOf(AppSettings(avatar = "zebra"))
+        vm = HomeViewModel(memory, scheduler, settingsStore)
+        advanceUntilIdle()
+
+        assertEquals("zebra", vm.buddy.value)
+    }
+
+    @Test
+    fun `buddy falls back to the default for corrupt settings`() = runTest {
+        every { settingsStore.settings } returns flowOf(AppSettings(avatar = "unicorn"))
+        vm = HomeViewModel(memory, scheduler, settingsStore)
+        advanceUntilIdle()
+
+        assertEquals(com.anaalarm.ui.avatar.Avatars.DEFAULT, vm.buddy.value)
+    }
 }

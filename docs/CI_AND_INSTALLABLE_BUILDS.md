@@ -82,7 +82,7 @@ This check boots the minimum-supported Android version on a Google APIs emulator
 3. Runs the required alarm, boot, firing, and notification group. The verdict must be exactly
    34 tests with zero skipped/assumption tests.
 4. Clears both app packages and restores capabilities so the aggregate phase starts clean.
-5. Runs the complete instrumented suite. The verdict must be exactly 173 tests with zero skips.
+5. Runs the complete instrumented suite. The verdict must be exactly 189 tests with zero skips.
 6. Uploads instrumentation output, logcat, activity state, and Android test reports as
    `android-device-api-26`.
 
@@ -91,7 +91,7 @@ reporting a misleading green result.
 
 ### 3. Device tests (API 36)
 
-This check repeats the same 34-test and 173-test, zero-skip gates on the current target SDK. It
+This check repeats the same 34-test and 189-test, zero-skip gates on the current target SDK. It
 also verifies modern exact-alarm and full-screen-intent app-ops. After the instrumented suite it:
 
 1. Builds the minified production-shaped release variant.
@@ -146,7 +146,7 @@ downgrades.
 
 These artifacts exist only on **GitHub Actions** (the CI mirror), not on Origin.
 
-1. Open the GitHub mirrorâ€™s **Actions** tab (`github.com/burnigtm/AnaAlarm`).
+1. Open the GitHub mirror's **Actions** tab (`github.com/burnigtm/AnaAlarm`).
 2. Select **Android quality** and open the latest successful run on `main`.
 3. In **Artifacts**, download `anaalarm-installable-<run>-<attempt>`.
 4. Extract the downloaded ZIP. GitHub artifacts are ZIP archives; the APK inside is the file to
@@ -396,13 +396,13 @@ proof, so the issue can be audited (and was closed by PR #11's program).
 | --- | --- |
 | Minified `internal` variant, `com.anaalarm.internal`, label *AnaAlarm Internal* | `app/build.gradle.kts` (`create("internal")`, `applicationIdSuffix`, `resValue("string", "internal_app_name", ...)`) |
 | Gradle and pull-request jobs free of reusable signing secrets | Signing secrets appear only in the main-only `installable` job under the `internal-distribution` environment (`.github/workflows/android.yml`); Host/PR jobs receive none |
-| Rehearse unsigned input in Host; sign on a fresh runner that executes no Gradle | Host: "Rehearse installable APK packaging" + "Stage unsigned signer input"; `installable` job contains no `gradlew` step — only checkout, JDK, artifact download, signing script |
+| Rehearse unsigned input in Host; sign on a fresh runner that executes no Gradle | Host: "Rehearse installable APK packaging" + "Stage unsigned signer input"; `installable` job contains no `gradlew` step â€” only checkout, JDK, artifact download, signing script |
 | Distribution only after Host, API 26, API 36 pass on trusted main with approved environment | `installable:` `needs: [host, device]` + `if: github.ref == 'refs/heads/main' ...` + `environment: internal-distribution` |
 | Dedicated stable internal key scoped to the main-only environment | `ANAALARM_INTERNAL_KEYSTORE_BASE64` et al. referenced exclusively in that job/environment; pin file `.github/internal-distribution-certificate.sha256` version-controlled |
 | Verify signature, certificate pin, package, label, version, mapping, non-debuggable, alignment, checksum | `scripts/ci/sign-installable-apk.sh`: cert-pin comparison, `apksigner verify --print-certs` digest match, single-signer check, `aapt dump badging` package/versionCode/versionName/label assertions, debuggable rejection, `zipalign -c -P 16 4`, `sha256sum` sidecar + `build-info.txt` |
 | Workflow-run-ordered CI version code; 30-day final retention | `version_code = GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT`; upload step `retention-days: 30` |
 | PR rehearsal with disposable key; install + cold-launch on API 36 | `scripts/ci/test-installable-apk.sh` generates an ephemeral 1-day key, rewrites its own pin file, runs the identical verifier; API-36 device job builds the internal APK and performs `adb install` + cold-launch + liveness smoke (`run-device-ci.sh`) |
-| Document four checks, download/install/update, checksum/signer verification, key provisioning/rotation, retention, limitations | This document: "When each check runs", "What the four checks prove", "Download and install an APK", "Verify the download", "Signing boundary…", "Provision or replace the environment key", "Key rotation or loss", "Retention and limitations" |
+| Document four checks, download/install/update, checksum/signer verification, key provisioning/rotation, retention, limitations | This document: "When each check runs", "What the four checks prove", "Download and install an APK", "Verify the download", "Signing boundaryâ€¦", "Provision or replace the environment key", "Key rotation or loss", "Retention and limitations" |
 
 Residual owner action (repository Settings, not code): protect `main` with the three quality
 checks as required status checks, require resolved conversations, and block force pushes and

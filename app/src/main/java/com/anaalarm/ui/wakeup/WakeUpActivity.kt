@@ -159,6 +159,9 @@ class WakeUpActivity : ComponentActivity() {
     internal fun activeAlarmIdForTest(): Long = sessionViewModel.activeAlarmId
     internal fun controllerIdentityForTest(): Int =
         System.identityHashCode(sessionViewModel.controller)
+    internal fun buddySpeciesForTest(): String =
+        sessionViewModel.controller?.buddy
+            ?: com.anaalarm.ui.avatar.Avatars.DEFAULT
 
     private fun showOverLockScreen() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {

@@ -162,4 +162,34 @@ class PromptBuilderTest {
         )
         assertTrue(prompt.contains("water plants: 5-day streak"))
     }
+
+    @Test
+    fun `buddy line mentions the selected species`() {
+        assertTrue(PromptBuilder.buddyLine("cheetah").contains("Kiko the cheetah"))
+        assertTrue(PromptBuilder.buddyLine("dino").contains("Dax the dino"))
+        assertTrue(PromptBuilder.buddyLine("zebra").contains("Zuri the zebra"))
+    }
+
+    @Test
+    fun `unknown avatar falls back to the cheetah buddy line`() {
+        assertEquals(PromptBuilder.buddyLine("cheetah"), PromptBuilder.buddyLine("dragon"))
+        // Avatars.from is case-sensitive and trims nothing: padding and case fall back too.
+        assertEquals(PromptBuilder.buddyLine("cheetah"), PromptBuilder.buddyLine("CHEETAH"))
+        assertEquals(PromptBuilder.buddyLine("cheetah"), PromptBuilder.buddyLine("cheetah "))
+    }
+
+    @Test
+    fun `buddy caps itself to one mention per session`() {
+        assertTrue(PromptBuilder.buddyLine("dino").contains("at most once per session"))
+    }
+
+    @Test
+    fun `instructions embed the wake-up buddy`() {
+        val prompt = PromptBuilder.buildInstructions(
+            AppSettings(name = "Sam", avatar = "zebra"),
+            now,
+            ""
+        )
+        assertTrue(prompt.contains("Zuri the zebra, drawn on screen next to you"))
+    }
 }

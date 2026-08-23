@@ -66,6 +66,14 @@ The follow-up memory is the part that makes it feel personal rather than gimmick
 role-labelled session transcript is appended to a daily log, and a later morning's system prompt
 includes the most recent prior-day log so Ana can carry a thread forward.
 
+<p align="center">
+  <img src="docs/screenshots/home-morning.png" alt="Home recap with Kiko and weekday alarms" width="180">
+  <img src="docs/screenshots/wake-speaking.png" alt="Wake-up session while Ana is speaking" width="180">
+  <img src="docs/screenshots/settings-buddy.png" alt="Settings picker for Kiko, Dax, and Zuri" width="180">
+</p>
+
+A longer walkthrough with every major screen is in [docs/PRODUCT_TOUR.md](docs/PRODUCT_TOUR.md).
+
 ## 3. Feature tour
 
 ### Alarms
@@ -104,6 +112,7 @@ includes the most recent prior-day log so Ana can carry a thread forward.
 | Interests | Comma-separated; Ana brings them up as conversation topics |
 | Session length | 5–15 minutes before she wraps up |
 | Tone & voice | Gentle / cheerful / drill-sergeant energy plus voice pitch and speech-rate sliders |
+| Wake-up buddy | Animated animal (Kiko the cheetah, Dax the dino, or Zuri the zebra) on the wake-up screen, stop-challenge dialog, home recap, and in Ana's prompt |
 | Data export | One-tap encrypted export/import of logs, habits, sessions, and preferences (never the API key) |
 
 ## 4. How it works under the hood
@@ -203,7 +212,7 @@ AnaAlarm/
         │       ├── ai/              # DeepSeek client, prompt builder, engine, error mapping
         │       ├── alarm/           # Scheduler, receivers, foreground service, notifications
         │       ├── data/            # Room entities/DAOs/database, SettingsStore, MemoryStore
-        │       ├── ui/              # Compose screens, theme, wake-up session
+        │       ├── ui/              # Compose screens, theme, wake-up session, avatar rig
         │       └── voice/           # TTS manager, speech recognition wrapper
         ├── debug/res/xml/        # Debug-only network config (loopback cleartext for tests)
         ├── test/                 # Fast JVM unit tests
@@ -482,13 +491,18 @@ current development (`versionCode` remains `1`). See
 
 ## 11. Using the app
 
+Screenshot walkthrough: [docs/PRODUCT_TOUR.md](docs/PRODUCT_TOUR.md).
+
 ### Creating an alarm
 1. Tap the **+** button.
 2. Tap the time to open the time picker.
 3. Tap the day chips to choose repeat days. Selecting none creates a one-shot alarm.
 4. Drag the snooze slider (1–30 minutes).
 5. Tap **Save**. A confirmation tells you exactly when it will fire — "today at 06:30",
-   "tomorrow at 06:30" or "Sat at 06:30".
+   "tomorrow at 06:30" or "Sat at 06:30". Optional **Stop challenge** (math or a memorized code)
+   is on the same editor.
+
+![Alarm editor with weekdays and the Math stop challenge selected](docs/screenshots/alarm-edit.png)
 
 ### Managing alarms
 - **Edit:** tap the alarm card; every field is pre-filled.
@@ -513,7 +527,10 @@ current development (`versionCode` remains `1`). See
    appears. Type your answer and press **Send** — the conversation continues identically. You can
    also switch to typing at any time with **Type instead**.
 7. When the session ends, a bounded role-labelled transcript is appended to today's log, and
-   tomorrow morning Ana can refer back to it.
+   tomorrow morning Ana can refer back to it. The home recap card shows that summary next to
+   your buddy, with today's habits as a tappable checklist.
+
+![Home recap card with Kiko, this morning's summary, and habit streaks](docs/screenshots/home-morning.png)
 
 ### Everyday tips
 - Set the session length to 5 minutes on weekdays; you can always keep talking past the
@@ -664,6 +681,7 @@ Longer explanations for each of these: [docs/TROUBLESHOOTING.md](docs/TROUBLESHO
 | Document | Contents |
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Module map, thread model, session lifecycle, data model, error strategy |
+| [docs/PRODUCT_TOUR.md](docs/PRODUCT_TOUR.md) | Annotated screenshots of home, settings, the wake-up session, stop challenges, and stats |
 | [docs/ENHANCEMENTS.md](docs/ENHANCEMENTS.md) | The 2026 enhancement program: streaming, usage dashboard, persona, challenges, habits, widget, export |
 | [docs/AI_INTEGRATION.md](docs/AI_INTEGRATION.md) | Responses API usage, prompt design, memory model, token/cost behaviour |
 | [docs/ALARM_SYSTEM.md](docs/ALARM_SYSTEM.md) | Scheduling, permissions, receivers, per-Android-version caveats |

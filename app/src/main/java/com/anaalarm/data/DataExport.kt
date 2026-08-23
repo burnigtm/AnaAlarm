@@ -30,7 +30,9 @@ object DataExport {
         val pronouns: String,
         val tone: String,
         val voicePitch: Float,
-        val voiceRate: Float
+        val voiceRate: Float,
+        /** Absent in pre-avatar exports; restore falls back to the default buddy. */
+        val avatar: String? = null
     )
 
     @Serializable
@@ -75,7 +77,8 @@ object DataExport {
                 pronouns = settings.pronouns,
                 tone = settings.tone,
                 voicePitch = settings.voicePitch,
-                voiceRate = settings.voiceRate
+                voiceRate = settings.voiceRate,
+                avatar = settings.avatar
             ),
             dailyLogs = memory.exportableDailyLogs().map {
                 ExportedLog(date = it.date, summary = it.summary)
@@ -122,7 +125,8 @@ object DataExport {
                 pronouns = s.pronouns,
                 tone = s.tone,
                 voicePitch = s.voicePitch,
-                voiceRate = s.voiceRate
+                voiceRate = s.voiceRate,
+                avatar = s.avatar
             )
             restored++
         }

@@ -11,5 +11,19 @@
                 <action android:name="com.anaalarm.action.DEBUG_FIRE_ALARM" />
             </intent-filter>
         </receiver>
+
+        <!-- Debug-only host for createComposeRule()-based Compose UI tests. -->
+        <activity
+            android:name="androidx.activity.ComponentActivity"
+            android:exported="false" />
+
+        <!-- ADB-launched product-tour gallery used to capture docs/screenshots. -->
+        <activity
+            android:name=".debug.DocsGalleryActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.AnaAlarm"
+            android:launchMode="singleTop" />
     </application>
 </manifest>

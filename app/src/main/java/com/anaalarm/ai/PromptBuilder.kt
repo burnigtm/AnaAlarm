@@ -23,6 +23,7 @@ object PromptBuilder {
         val p = Pronouns.forms(settings.pronouns)
         val toneDirective = toneDirective(settings.tone)
         val streakContext = streakLine(habitStreaks)
+        val buddyContext = buddyLine(settings.avatar)
 
         return """
             You are Ana, the warm, cheerful and energetic morning companion of $name.
@@ -32,6 +33,7 @@ object PromptBuilder {
             - Always reply in $languageName. Never switch languages.
             $toneDirective
             $streakContext
+            $buddyContext
 
             Today is ${now.format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"))} and it is ${now.format(DateTimeFormatter.ofPattern("h:mm a"))}.
 
@@ -67,6 +69,19 @@ object PromptBuilder {
         else ->
             "Tone: cheerful and energetic, like a friend who genuinely loves mornings."
     }
+
+    /**
+     * Tells Ana which animated buddy is drawn on the wake-up screen so she can cheer the user
+     * on together with it. Unknown species values fall back to the default cheetah.
+     */
+    fun buddyLine(avatar: String): String = when (com.anaalarm.ui.avatar.Avatars.from(avatar)) {
+        com.anaalarm.ui.avatar.Avatars.DINO ->
+            "Wake-up buddy: Dax the dino, drawn on screen next to you."
+        com.anaalarm.ui.avatar.Avatars.ZEBRA ->
+            "Wake-up buddy: Zuri the zebra, drawn on screen next to you."
+        else ->
+            "Wake-up buddy: Kiko the cheetah, drawn on screen next to you."
+    } + " You may mention the buddy cheering along at most once per session."
 
     fun buildEndPrompt(): String =
         "The wake-up session is over. Give a short, warm, energetic farewell and tell the user it is time to get up."

@@ -48,6 +48,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -67,13 +69,24 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AlarmEditScreen(alarmId: Long, onBack: () -> Unit) {
+fun AlarmEditScreen(
+    alarmId: Long,
+    onBack: () -> Unit,
+    scrollToChallenge: Boolean = false
+) {
     val context = LocalContext.current
     val app = context.applicationContext as AnaAlarmApp
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
 
     var loaded by remember { mutableStateOf(false) }
+    val scroll = rememberScrollState()
+    var challengeY by remember { mutableIntStateOf(0) }
+    LaunchedEffect(loaded, scrollToChallenge, challengeY) {
+        if (loaded && scrollToChallenge && challengeY > 0) {
+            scroll.scrollTo((challengeY - 16).coerceAtLeast(0))
+        }
+    }
     var hour by remember { mutableIntStateOf(7) }
     var minute by remember { mutableIntStateOf(0) }
     var days by remember { mutableIntStateOf(0) }
@@ -187,7 +200,7 @@ fun AlarmEditScreen(alarmId: Long, onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scroll)
                 .padding(16.dp)
         ) {
             if (!loaded) return@Column
@@ -310,6 +323,11 @@ fun AlarmEditScreen(alarmId: Long, onBack: () -> Unit) {
             }
 
             Spacer(Modifier.height(16.dp))
+            Column(
+                modifier = Modifier.onGloballyPositioned {
+                    challengeY = it.positionInParent().y.toInt()
+                }
+            ) {
             Text(
                 text = context.getString(R.string.challenge_label),
                 style = MaterialTheme.typography.titleMedium,
@@ -328,6 +346,7 @@ fun AlarmEditScreen(alarmId: Long, onBack: () -> Unit) {
                         label = { Text(context.getString(labelRes)) }
                     )
                 }
+            }
             }
 
             Spacer(Modifier.height(32.dp))
