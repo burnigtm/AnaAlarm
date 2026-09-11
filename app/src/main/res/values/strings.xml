@@ -98,6 +98,10 @@
     <string name="export_done">Encrypted export saved.</string>
     <string name="import_done">Data imported.</string>
     <string name="export_import_failed">Export/import failed. The file may be damaged or from another device key.</string>
+    <string name="export_device_bound_note">Encrypted for this installation only. Reinstalling the app or moving to another phone makes the file unreadable. Alarms are not included — only settings, logs, sessions, and habits.</string>
+    <string name="streaming_title">Experimental</string>
+    <string name="streaming_label">Streaming replies</string>
+    <string name="streaming_hint">Speak phrases as the model generates them. Off by default until you opt in.</string>
     <string name="settings_saved">Settings saved</string>
     <string name="saved">Saved</string>
     <string name="api_key_saved_hint">Key is saved and hidden. Paste a new key only to replace it.</string>

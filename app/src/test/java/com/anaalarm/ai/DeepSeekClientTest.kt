@@ -422,6 +422,23 @@ class DeepSeekClientTest {
         assertEquals(false, okHttp.retryOnConnectionFailure)
     }
 
+    @Test
+    fun `release-shaped transport omits http logging interceptor`() {
+        val okHttp = DeepSeekClient.defaultOkHttp(enableHttpLogging = false)
+        assertTrue(
+            "release client must not attach HttpLoggingInterceptor",
+            okHttp.interceptors.none { it.javaClass.name.contains("HttpLoggingInterceptor") }
+        )
+    }
+
+    @Test
+    fun `debug-shaped transport attaches basic http logging interceptor`() {
+        val okHttp = DeepSeekClient.defaultOkHttp(enableHttpLogging = true)
+        assertTrue(
+            okHttp.interceptors.any { it.javaClass.name.contains("HttpLoggingInterceptor") }
+        )
+    }
+
     private fun completedResponse(text: String) = ResponsesResponse(
         status = "completed",
         outputText = text

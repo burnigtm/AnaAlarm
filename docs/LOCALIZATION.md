@@ -40,7 +40,13 @@ Saving persists the choice and immediately reconfigures the shared TTS manager (
 
 Every UI text goes through `context.getString(R.string.…)` or `stringResource(R.string.…)` in Compose,
 including notification channel titles. Numeric formats like `"%02d:%02d"` are locale-safe via
-`Locale.getDefault()`. The Settings **language chip does not** change which `values*` folder is used.
+`Locale.getDefault()`.
+
+On **Android 13+ (API 33+)**, saving (or importing) a language also calls `AppLocales.apply`, which
+sets the per-app `LocaleManager` locale so the matching `values*` folder is used for the UI.
+`AnaAlarmApp` reapplies the stored language via `AppLocales.applyIfUnset` on process start.
+Below API 33 the UI continues to follow the device locale; TTS / recognition / AI still follow
+the in-app `language` setting on every version.
 
 ## 4. Non-string localization points
 

@@ -5,28 +5,26 @@ This document describes how AnaAlarm is structured, how the pieces fit together,
 ## 1. Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         UI layer (Compose)                       │
-│  HomeScreen │ AlarmEditScreen │ SettingsScreen │ WakeUpScreen   │
-└───────────────┬──────────────┬──────────────────┬───────────────┘
-                │              │                  │
-                │ MVVM         │                  │ SessionController
-                ▼              ▼                  ▼
-        ┌────────────┐  ┌────────────┐   ┌────────────────────┐
-        │ Home/      │  │ Settings   │   │ ConversationEngine │
-        │ AlarmEdit  │  │ (direct    │   │        +           │
-        │ ViewModels │  │  DataStore │   │ TtsManager/Speech  │
-        └─────┬──────┘  │  writes)   │   └─────────┬──────────┘
-              │         └────────────┘             │
-              ▼                                    ▼
-        ┌──────────────┐                  ┌──────────────────┐
-        │ MemoryStore  │                  │   DeepSeekClient │
-        │  (Room +     │                  │  (Retrofit/OKHttp│
-        │   settings)  │                  │   SSE-ready)     │
-        └──────────────┘                  └────────┬─────────┘
-                                                  ▼
-                                    https://api.deepseek.com/responses
-                                         model: deepseek-v4-flash
+┌──────────────────────────────────────────────────────────────────────┐
+│                         UI layer (Compose)                            │
+│  Home │ AlarmEdit │ Settings │ Stats │ WakeUp │ widget / DirectBoot │
+└──────────┬──────────────┬───────────────────┬────────────────────────┘
+           │ MVVM         │ direct store       │ SessionController
+           ▼              ▼                    ▼
+   ┌──────────────┐ ┌────────────┐   ┌────────────────────┐
+   │ Home/        │ │ Settings / │   │ ConversationEngine │
+   │ AlarmEdit    │ │ Stats      │   │  + Tts / Speech    │
+   │ ViewModels   │ │ writes     │   └─────────┬──────────┘
+   └──────┬───────┘ └────────────┘             │
+          ▼                                    ▼
+   ┌──────────────┐                  ┌──────────────────┐
+   │ MemoryStore  │                  │   DeepSeekClient │
+   │ (Room v7 +   │                  │  Retrofit/OkHttp │
+   │  settings)   │                  │  + optional SSE  │
+   └──────────────┘                  └────────┬─────────┘
+                                              ▼
+                                https://api.deepseek.com/responses
+                                     model: deepseek-v4-flash
 ```
 
 ## 2. Modules and responsibilities
@@ -34,19 +32,21 @@ This document describes how AnaAlarm is structured, how the pieces fit together,
 ### `data/` — persistence
 | File | Responsibility |
 |---|---|
-| `Entities.kt` | Room entities: `AlarmEntity`, `MessageEntity`, `DailyLogEntity` |
-| `Daos.kt` | Room DAOs with Flow-based observation for alarms |
-| `AnaDatabase.kt` | Singleton Room database (`anaalarm.db`) |
-| `SettingsStore.kt` | DataStore preferences (`anaalarm_settings`); exposes `Flow<AppSettings>`, atomic updates, and legacy-key migration |
+| `Entities.kt` | Room entities: `AlarmEntity` (incl. challenge/ringtone), `MessageEntity`, `DailyLogEntity`, `UsageEntity`, `SessionRecordEntity`, `HabitEventEntity` |
+| `Daos.kt` | Room DAOs with Flow-based observation for alarms and stats queries |
+| `AnaDatabase.kt` | Singleton Room database (`anaalarm.db`), **version 7**, migrations 1→7, exported schemas |
+| `SettingsStore.kt` | DataStore preferences (`anaalarm_settings`); `Flow<AppSettings>`, atomic updates, legacy-key migration |
 | `KeystoreSecretCipher.kt` | AES-GCM credential encryption backed by an app-private Android Keystore key |
-| `MemoryStore.kt` | Alarms CRUD, session/message management, daily logs, raw-message clearing and retention pruning |
+| `DataExport.kt` | Device-bound encrypted export/import of settings/logs/sessions/habits (never the API key) |
+| `MemoryStore.kt` | Alarms CRUD, session/message management, daily logs, usage, habits, retention pruning |
 
 ### `ai/` — the brain
 | File | Responsibility |
 |---|---|
-| `DeepSeekClient.kt` | Retrofit Responses API client; 20-second operation deadline, bounded retry, structured status/usage parsing, redacted telemetry |
-| `PromptBuilder.kt` | Builds the `instructions` system prompt from profile + date/time + the most recent prior-day context |
-| `ConversationEngine.kt` | Orchestrates a session: starts it, sends user turns with history, wraps up, persists the daily log |
+| `DeepSeekClient.kt` | Retrofit Responses API client; 20-second operation deadline, bounded retry, structured status/usage parsing, redacted telemetry; HTTP logging **debug-only** |
+| `PromptBuilder.kt` | Builds the `instructions` system prompt from profile + date/time + prior-day context + persona |
+| `ConversationEngine.kt` | Orchestrates a session: starts it, sends user turns (complete or streaming), wraps up, persists the daily log |
+| `ai/stream/*` | SSE parser/decoder, phrase segmenter, `StreamingTurnCoordinator` for phrase-level TTS overlap |
 
 ### `voice/` — spoken conversation
 | File | Responsibility |
@@ -59,23 +59,27 @@ This document describes how AnaAlarm is structured, how the pieces fit together,
 |---|---|
 | `AlarmScheduler.kt` | Typed `setAlarmClock` scheduling results, regular/snooze cancellation, one-shot disable, repeat computation and reconciliation |
 | `AlarmReceiver.kt` | Private scheduled-delivery receiver; starts the service and keeps async post-fire persistence alive |
-| `AlarmService.kt` | Foreground delivery, immediate local sound/vibration, screen wake and full-screen activity launch |
+| `AlarmService.kt` | Foreground delivery, immediate local sound/vibration (generated tone first; custom URI resolved on ringtone executor), screen wake and full-screen activity launch |
 | `BootReceiver.kt` | Reconciles enabled alarms after boot, update, clock/time-zone change and exact-alarm permission grant |
 | `Notifications.kt` | Notification channel creation |
+| `DismissalChallenges.kt` | Local math/memory challenges before Stop |
 
 ### `ui/` — screens
 | File | Responsibility |
 |---|---|
-| `AppRoot.kt` | Screen navigation state (Home / AlarmEdit / Settings) |
-| `home/` | Home screen + `HomeViewModel` (alarms list, delete/toggle, test-session button, permission warning) |
-| `alarm/AlarmEditScreen.kt` | Time picker, repeat-day chips, snooze slider, save/cancel |
-| `settings/SettingsScreen.kt` | API key, name, language, habits, interests, session length, wake-up buddy |
+| `AppRoot.kt` | Screen navigation state (Home / AlarmEdit / Settings / Stats) with system `BackHandler` → Home |
+| `AppLocales.kt` | Per-app `LocaleManager` apply on Settings save and `applyIfUnset` at process start |
+| `home/` | Home screen + `HomeViewModel` (alarms list, delete/toggle, test-session button, permission warning, stats entry, buddy recap) |
+| `alarm/AlarmEditScreen.kt` | Time picker, repeat-day chips, snooze slider, dismissal challenge, custom ringtone, save/cancel |
+| `settings/SettingsScreen.kt` | API key, name, language, pronouns, tone, voice pitch/rate, wake-up buddy, habits, interests, session length, AI usage, experimental streaming toggle, device-bound export/import |
+| `stats/StatsScreen.kt` | Session/token habit dashboard from Room aggregates |
 | `avatar/` | Procedural animal rig (`AnimalAvatar`), species registry (`Avatars`), mood/palette |
-| `wakeup/` | `WakeUpActivity` (full-screen), `SessionController` (conversation state machine), `WakeUpScreen` (UI) |
+| `wakeup/` | `WakeUpActivity` (full-screen), `SessionController` façade + `SessionListenCycle` / `SessionTurnPipeline` / `SessionDismissal`, `WakeUpScreen` |
 | `theme/Theme.kt` | Material 3 color scheme (light + dark), warm morning palette |
 
 ### `AnaAlarmApp.kt` — manual DI
-The `Application` eagerly creates only the storage/scheduler path needed for alarm reconciliation.
+The `Application` eagerly creates only the storage/scheduler path needed for alarm reconciliation
+and reapplies the stored UI language via `AppLocales.applyIfUnset`.
 Retrofit/OkHttp, TTS, speech recognition, and the shared test `ConversationEngine` are initialized
 lazily so a killed-process alarm can reach `AlarmService` without paying those cold-start costs.
 Each live wake controller receives its own `ConversationEngine`; network and storage dependencies
@@ -88,15 +92,17 @@ finalization.
 - **TTS callbacks** are posted to the main thread and matched to the active utterance id.
 - **Speech callbacks** are posted to the main thread and accepted only for the active recognition generation.
 - **Network + Room calls** run on `Dispatchers.IO` (Retrofit suspend + Room suspend are safe from any dispatcher; `applicationScope` is IO).
+- **Alarm ringtone resolution** (Room + `MediaPlayer.setDataSource`) runs on `AnaAlarm-ringtone`, never the service main path; the generated tone starts first.
 - `SessionController` runs in `WakeUpSessionViewModel.viewModelScope`; the controller therefore
   survives rotation/fold/large-screen configuration changes.
 - `SettingsStore` maps DataStore on IO and caches the decrypted credential in memory, atomically
   refreshing it after a settings save.
 
-`SessionController` owns cancellable startup/turn/listen/wrap-up jobs. Atomic one-shot guards make
-activity finish, alarm-stop, and conversation finalization idempotent. `WakeUpSessionViewModel`
-replaces the controller explicitly for a different overlapping alarm id; final persistence moves
-to the application scope and uses the retired controller's isolated engine.
+`SessionController` owns cancellable startup jobs and delegates listen / turn / dismissal to
+dedicated collaborators. Atomic one-shot guards make activity finish, alarm-stop, and conversation
+finalization idempotent. `WakeUpSessionViewModel` replaces the controller explicitly for a
+different overlapping alarm id; final persistence moves to the application scope and uses the
+retired controller's isolated engine.
 
 ## 4. Wake-up session lifecycle
 
@@ -105,33 +111,36 @@ WakeUpActivity.onCreate
         │
         ▼
 SessionController.start()
-  ├─ read settings (language, session minutes)
+  ├─ read settings (language, session minutes, streamingEnabled, avatar, challenge)
   ├─ wire SpeechListener generation-scoped callbacks
   ├─ prepare recognizer (prefer on-device)
   ├─ configure/await TTS ─────────────────┐
   └─ beginSession() concurrently:          │
         ConversationEngine.startSession()
           ├─ sessionId = now (ms)
-          ├─ instructions = PromptBuilder.build(profile, date/time, prior-day log)
+          ├─ instructions = PromptBuilder.build(...)
           ├─ persist synthetic greeting input
           └─ POST /responses ──► greeting text
                                            │
       speak(greeting) ◄─────────────────────┘
         ├─ onStart ──► stop local alarm fallback
-        └─ onDone ──► 175 ms settle ──► LISTENING ──► startListening()
+        └─ onDone ──► SessionListenCycle settle ──► LISTENING
         │
-        ├── user speaks ──► onUserSpeech(text)
-        │     ├─ stop phrase? ──► wrapUp()
-        │     └─ else ──► ConversationEngine.respond(text)
-        │                   ├─ history (last 20) + new message saved
-        │                   ├─ POST /responses (full input)
-        │                   └─ speak(reply) ──► listen again
+        ├── user speaks ──► SessionTurnPipeline.onUserSpeech(text)
+        │     ├─ stop phrase? ──► SessionDismissal.wrapUp()
+        │     └─ else ──► legacy ConversationEngine.respond
+        │                 OR streaming respondStreaming + StreamingTurnCoordinator
+        │                   └─ speak / afterSpeaking ──► listen again
         │
-        ├── recognizer partial ──► visible partial transcript
-        ├── soft error/silence ──► one retry, then typed fallback
+        ├── recognizer partial / soft error ──► SessionListenCycle retry / text fallback
         ├── hard error ──────────► typed fallback immediately
         │
-        └── time up (elapsed >= sessionMinutes) ──► wrapUp()
+        ├── Stop ──► SessionDismissal.requestStop()
+        │              ├─ challenge (math/memory)? ──► prove awake ──► stopNow
+        │              └─ else stopNow → terminate + AlarmService.stop
+        ├── Snooze ──► scheduleSnooze then terminate
+        │
+        └── time up / hard deadline ──► SessionDismissal.wrapUp()
               └─ farewell = POST /responses ("wrap up" prompt)
                  speak(farewell) ──► endSession()
                      ├─ activity finish (once)
@@ -141,9 +150,9 @@ SessionController.start()
 ```
 
 **End conditions (all paths):**
-1. Stop phrase spoken (see `stopPhrases` in `SessionController`).
+1. Stop phrase spoken (see `stopPhrases` in `SessionPhrases`).
 2. Session time elapses → AI wraps up with a farewell.
-3. Stop button pressed → immediate stop, log saved.
+3. Stop button pressed (after optional dismissal challenge) → immediate stop, log saved.
 4. Snooze button → exact one-off schedule succeeds, then current session stops.
 5. Unrecoverable AI error → conversation ends and an actionable error remains visible, but the
    independent local alarm continues until explicit Stop or successful Snooze.
@@ -151,12 +160,18 @@ SessionController.start()
 ## 5. Data model
 
 ```
-alarms(id PK, hour, minute, days bitmask, snoozeMinutes, enabled)
+alarms(id PK, hour, minute, days bitmask, snoozeMinutes, enabled,
+       challengeType, maxSnoozes, ringtoneUri)
 messages(id PK, sessionId, role "user"|"assistant", content, timestamp)
 daily_logs(id PK, date "yyyy-MM-dd", summary)
+usage(id PK, date, sessionId?, input/output/cached/total tokens, timestamp)
+session_records(id PK, startedAt, endedAt, durationMs, turns)
+habit_events(id PK, name, date, done)  -- unique (name, date)
 
 DataStore keys: api_key_encrypted, name, language, habits, interests,
-                session_minutes, snooze_minutes
+                session_minutes, snooze_minutes, pronouns, streaming_enabled,
+                tone, voice_pitch, voice_rate, avatar
+                (+ legacy api_key cleared on migration)
 ```
 
 - `days` bitmask: bit 0 = Sunday … bit 6 = Saturday.
@@ -165,8 +180,10 @@ DataStore keys: api_key_encrypted, name, language, habits, interests,
 - Daily log: up to 900 characters of role-labelled session history, appended (not blank-replaced)
   to today's bounded log. The most recent log before today is injected into the prompt.
 - Raw session messages are deleted after a successful daily log and startup-pruned after seven days.
-- Room version 4 has explicit 1→2→3→4 migrations, exported schemas, a
+- Room **version 7** ships explicit migrations `1→2→…→7`, exported schemas (2–7), a
   `(sessionId, timestamp)` history index, and a timestamp-only retention index.
+- `DataExport` encrypts with Keystore alias `anaalarm.export.v1` — restore works on the same
+  device only.
 
 ## 6. Error handling strategy
 
@@ -177,7 +194,8 @@ DataStore keys: api_key_encrypted, name, language, habits, interests,
 | Quick retryable I/O failure | `DeepSeekClient` | One retry within the same deadline; TLS/timeouts/cancellation are not retried |
 | HTTP/API error | `DeepSeekClient` | Structured `failed`/`incomplete`/HTTP state becomes `ApiException` |
 | Empty response | `DeepSeekClient` | `ApiException("empty response")` |
-| Speech error / silence | `SpeechListener` + `SessionController` | Generation-safe retry for soft failures; hard/repeated failure switches to text |
+| Speech error / silence | `SpeechListener` + `SessionListenCycle` | Generation-safe retry for soft failures; hard/repeated failure switches to text |
 | Mic permission missing | `WakeUpActivity` | `voiceAvailable=false` → text input fallback on screen |
 | Schedule failure | `AlarmEditScreen` | Typed failure result; UI never shows the scheduled-success message |
 | TTS unavailable | `TtsManager` + `SessionController` | Bounded failure state and typed fallback; local alarm remains audible |
+| Export from another device | `DataExport` | Decrypt fail-closed; Settings copy explains device-bound exports |

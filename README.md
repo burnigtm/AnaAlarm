@@ -113,7 +113,7 @@ A longer walkthrough with every major screen is in [docs/PRODUCT_TOUR.md](docs/P
 | Session length | 5–15 minutes before she wraps up |
 | Tone & voice | Gentle / cheerful / drill-sergeant energy plus voice pitch and speech-rate sliders |
 | Wake-up buddy | Animated animal (Kiko the cheetah, Dax the dino, or Zuri the zebra) on the wake-up screen, stop-challenge dialog, home recap, and in Ana's prompt |
-| Data export | One-tap encrypted export/import of logs, habits, sessions, and preferences (never the API key) |
+| Data export | One-tap encrypted export/import of logs, habits, sessions, and preferences (never the API key; device-/install-bound Keystore — not portable; alarms not included) |
 
 ## 4. How it works under the hood
 
@@ -655,14 +655,16 @@ Longer explanations for each of these: [docs/TROUBLESHOOTING.md](docs/TROUBLESHO
 - **Full-screen intents are OEM-dependent.** Some manufacturers restrict them regardless of the
   granted permission; the ringing-notification fallback exists for exactly this case.
 - **Streaming speech ships behind a disabled-by-default flag.** The Responses SSE transport,
-  phrase segmenter, and QUEUE_ADD phrase queue are implemented and fixture-tested
-  (`streamingEnabled` setting); the default path remains bounded complete responses. The design
-  contract is specified in
+  phrase segmenter, and QUEUE_ADD phrase queue are implemented and fixture-tested. Settings
+  exposes an **Experimental → Streaming replies** toggle (`streamingEnabled`, default off); the
+  default path remains bounded complete responses. The design contract is specified in
   [docs/RELIABILITY_AND_LATENCY.md](docs/RELIABILITY_AND_LATENCY.md#responses-streaming-and-phrase-level-tts-overlap).
 - **In-app usage display is an estimate.** Settings shows tokens and an estimated cost computed
   from provider-reported token counts and list prices; your DeepSeek dashboard always shows the
   exact billed amount.
-- **Single user, single device.** No accounts, no sync, no backup/restore of conversation history.
+- **Single user, single device.** No accounts, no sync. Encrypted Settings export/import is
+  install-bound (Android Keystore): uninstall or another phone cannot decrypt it, and **alarms
+  are not part of the payload** — only settings, logs, sessions, and habits.
 
 ## 18. Extending the app
 
@@ -672,8 +674,8 @@ Longer explanations for each of these: [docs/TROUBLESHOOTING.md](docs/TROUBLESHO
 | Swap the AI provider | Implement a client with the same shape as `DeepSeekClient.respond(instructions, history)` and hand it to `ConversationEngine`; `AnaAlarmApp.overrideAiBackend` already exists as the injection point |
 | Change Ana's personality | `PromptBuilder.buildInstructions` — the entire persona and session script is one readable prompt |
 | Add stop phrases | `SessionPhrases.stopPhrases` |
-| Tune session pacing | `SessionController`: `LISTEN_TIMEOUT_MS`, `MAX_SILENT_CYCLES`, and the post-speech settle delay |
-| Tune alarm/snooze behavior | `AlarmScheduler`, `AlarmReceiver`, and `SessionController.snoozeNow()` |
+| Tune session pacing | `SessionListenCycle` constants (`LISTEN_TIMEOUT_MS`, `MAX_SILENT_CYCLES`, settle delay) via the `SessionController` façade |
+| Tune alarm/snooze behavior | `AlarmScheduler`, `AlarmReceiver`, and `SessionController.snoozeNow()` / `SessionDismissal` |
 | Change credential storage | `SettingsStore` and `KeystoreSecretCipher` |
 
 ## 19. Documentation index

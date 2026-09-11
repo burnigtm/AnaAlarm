@@ -67,7 +67,7 @@ mark `Installable APK` as a required PR check; it is supposed to skip on PRs.
 Signing secrets stay in the GitHub Environment `internal-distribution`.
 
 Do not weaken `--dependency-verification=strict`, SHA-pinned actions, or the
-34 + 189 zero-skip device gates.
+34 + 191 zero-skip device gates.
 
 ## Local development
 

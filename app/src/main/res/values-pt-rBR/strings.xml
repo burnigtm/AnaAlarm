@@ -98,6 +98,10 @@
     <string name="export_done">Exportação criptografada salva.</string>
     <string name="import_done">Dados importados.</string>
     <string name="export_import_failed">Falha na exportação/importação. O arquivo pode estar danificado ou ter sido gerado por outro dispositivo.</string>
+    <string name="export_device_bound_note">Criptografado só para esta instalação. Reinstalar o app ou mudar de telefone torna o arquivo ilegível. Alarmes não entram — só configurações, registros, sessões e hábitos.</string>
+    <string name="streaming_title">Experimental</string>
+    <string name="streaming_label">Respostas em streaming</string>
+    <string name="streaming_hint">Fala frases enquanto o modelo gera. Desligado por padrão até você ativar.</string>
     <string name="settings_saved">Configurações salvas</string>
     <string name="saved">Salvo</string>
     <string name="api_key_saved_hint">Chave salva e oculta. Cole uma nova somente para substituí-la.</string>

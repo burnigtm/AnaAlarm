@@ -42,6 +42,9 @@ bash ./gradlew assembleRelease \
 test -s "$unsigned_apk"
 test -s "$mapping_file" # R8 mapping proves this is the minified release variant.
 
+bash "$repo_root/scripts/ci/verify-minify-data-export.sh" "$mapping_file" "$unsigned_apk" \
+  | tee -a "$smoke_log"
+
 keytool -genkeypair -noprompt \
   -keystore "$key_store" -storetype PKCS12 \
   -storepass "$key_password" -keypass "$key_password" \

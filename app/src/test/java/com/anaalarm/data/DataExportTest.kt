@@ -120,6 +120,26 @@ class DataExportTest {
     }
 
     @Test
+    fun `restore is idempotent for session records`() = runTest {
+        val payload = DataExport.Payload(
+            exportedAtEpochMs = 1L,
+            sessions = listOf(
+                DataExport.ExportedSession(
+                    startedAt = 9L,
+                    endedAt = 70_000L,
+                    durationMs = 69_991L,
+                    turns = 2
+                )
+            )
+        )
+        assertTrue(DataExport.restore(payload, memory, settingsStore) >= 1)
+        assertEquals(1, memory.recentSessionRecords().size)
+        // Second import of the same natural key must not inflate Stats.
+        DataExport.restore(payload, memory, settingsStore)
+        assertEquals(1, memory.recentSessionRecords().size)
+    }
+
+    @Test
     fun `buddy selection round-trips through export and restore`() = runTest {
         settingsStore.update(name = "Alex", avatar = com.anaalarm.ui.avatar.Avatars.DINO)
 

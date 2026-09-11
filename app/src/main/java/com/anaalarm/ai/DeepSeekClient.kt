@@ -1,6 +1,7 @@
 package com.anaalarm.ai
 
 import android.util.Log
+import com.anaalarm.BuildConfig
 import com.anaalarm.ai.stream.SseParser
 import com.anaalarm.ai.stream.SseProtocolException
 import com.anaalarm.ai.stream.ResponsesStreamDecoder
@@ -456,16 +457,20 @@ class DeepSeekClient(
                 .build()
                 .create(DeepSeekApi::class.java)
 
-        fun defaultOkHttp(): OkHttpClient {
+        fun defaultOkHttp(enableHttpLogging: Boolean = BuildConfig.DEBUG): OkHttpClient {
             val builder = OkHttpClient.Builder()
                 .callTimeout(DEFAULT_REQUEST_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(20, TimeUnit.SECONDS)
                 .writeTimeout(10, TimeUnit.SECONDS)
                 .retryOnConnectionFailure(false)
-                .addInterceptor(HttpLoggingInterceptor().apply {
-                    level = HttpLoggingInterceptor.Level.BASIC
-                })
+            if (enableHttpLogging) {
+                builder.addInterceptor(
+                    HttpLoggingInterceptor().apply {
+                        level = HttpLoggingInterceptor.Level.BASIC
+                    }
+                )
+            }
             return DebugTls.applyIfDebug(builder).build()
         }
 

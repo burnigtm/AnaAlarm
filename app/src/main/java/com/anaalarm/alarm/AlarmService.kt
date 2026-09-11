@@ -187,10 +187,9 @@ class AlarmService : Service() {
         // service main path. The generated tone remains active if the provider is slow or fails.
         startGeneratedTone()
 
-        val alarmUri = resolveAlarmSound(alarmId)
-        if (alarmUri == null) return
-
         ringtoneExecutor.execute {
+            // Room lookup + ContentProvider open belong on this worker — never the service/main path.
+            val alarmUri = resolveAlarmSound(alarmId) ?: return@execute
             val player = MediaPlayer()
             runCatching {
                 player.setAudioAttributes(
