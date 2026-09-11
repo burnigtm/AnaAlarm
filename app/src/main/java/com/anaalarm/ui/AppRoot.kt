@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +28,11 @@ private sealed interface Screen {
 fun AppRoot() {
     var screen by remember { mutableStateOf<Screen>(Screen.Home) }
     val context = LocalContext.current
+
+    // Nested screens previously finished MainActivity on system Back; keep them on Home instead.
+    BackHandler(enabled = screen !is Screen.Home) {
+        screen = Screen.Home
+    }
 
     when (val current = screen) {
         is Screen.Home -> HomeScreen(

@@ -70,9 +70,10 @@ Implemented exactly per the contract in [RELIABILITY_AND_LATENCY.md](RELIABILITY
 ## Phase 4 — language, persona, offline voice
 
 - Per-app language via framework `LocaleManager` (Android 13+): `locales_config.xml`, manifest
-  attribute, `AppLocales.apply()` on save and `applyIfUnset()` at startup so a system-level
-  choice is never overridden. Below 13 the documented device-locale behavior continues. No new
-  dependencies — the strict verification lock stays untouched.
+  attribute, `AppLocales.apply()` on save and `AppLocales.applyIfUnset()` at process start
+  (`AnaAlarmApp`) so the stored language is restored after kill/relaunch without forcing a
+  recreation when already effective. Below 13 the documented device-locale behavior continues.
+  No new dependencies — the strict verification lock stays untouched.
 - Persona tone (gentle / cheerful / drill-sergeant) injected as a prompt directive; voice pitch
   and speech-rate sliders persisted and applied by `prepareTts`.
 - Spoken offline farewell: when the AI fails but TTS works, Ana speaks a localized wrap-up line;
@@ -181,7 +182,8 @@ New unit suites: `AvatarsTest`, `AvatarPoseTest`, `SettingsAvatarTest`, `AvatarM
 plus buddy cases in `PromptBuilderTest`, `DataExportTest`, and `HomeViewModelTest`. New device
 suites: `SettingsBuddyInstrumentedTest` (4), `HomeRecapBuddyInstrumentedTest` (2),
 `WakeUpBuddyInstrumentedTest` (6), `BuddyAvatarRenderInstrumentedTest` (2), and two extra
-`SettingsStoreInstrumentedTest` cases. Aggregate device lock: 173 → 189.
+`SettingsStoreInstrumentedTest` cases. Aggregate device lock: 173 → 189 → 191
+(audit Wave 0: system-Back navigation + DataExport Keystore round-trip).
 
 ## Deferred intentionally
 

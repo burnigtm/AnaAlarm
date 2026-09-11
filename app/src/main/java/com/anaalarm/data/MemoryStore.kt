@@ -179,6 +179,25 @@ class MemoryStore(
         )
     }
 
+    /**
+     * Inserts a session row only when no identical (startedAt, endedAt, turns) triple exists.
+     * Used by [DataExport.restore] so re-importing the same file does not inflate Stats.
+     * @return true when a new row was written.
+     */
+    suspend fun recordSessionIfAbsent(startedAtMillis: Long, endedAtMillis: Long, turns: Int): Boolean {
+        if (turns <= 0 && endedAtMillis <= startedAtMillis) return false
+        if (sessionRecordDao.countMatching(startedAtMillis, endedAtMillis, turns) > 0) return false
+        sessionRecordDao.insert(
+            SessionRecordEntity(
+                startedAt = startedAtMillis,
+                endedAt = endedAtMillis,
+                durationMs = (endedAtMillis - startedAtMillis).coerceAtLeast(0L),
+                turns = turns
+            )
+        )
+        return true
+    }
+
     suspend fun recentSessionRecords(limit: Int = 30): List<SessionRecordEntity> =
         sessionRecordDao.getRecent(limit)
 

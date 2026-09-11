@@ -42,5 +42,12 @@ object AppLocales {
             manager.applicationLocales = LocaleList.forLanguageTags(tagFor(languageCode))
         }
     }
+
+    /**
+     * Process-start helper: reapplies the stored language when it is not already effective.
+     * Skips when identical so a cold start never forces an Activity recreation; never overrides
+     * an already-matching system/app locale choice.
+     */
+    fun applyIfUnset(languageCode: String, context: Context) = apply(languageCode, context)
 }
 

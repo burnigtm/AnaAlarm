@@ -11,12 +11,15 @@ import com.anaalarm.alarm.Notifications
 import com.anaalarm.data.AnaDatabase
 import com.anaalarm.data.MemoryStore
 import com.anaalarm.data.SettingsStore
+import com.anaalarm.ui.AppLocales
 import com.anaalarm.voice.SpeechListener
 import com.anaalarm.voice.TtsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AnaAlarmApp : Application() {
 
@@ -83,6 +86,14 @@ class AnaAlarmApp : Application() {
         if (ensureCredentialStorage()) {
             // Reconcile Room, the direct-boot mirror, and AlarmManager on every normal process start.
             alarmScheduler.rescheduleAll()
+            // Restore the in-app language after kill/relaunch (API 33+). No-ops when already effective.
+            applicationScope.launch {
+                val language = runCatching { settingsStore.settings.first().language }.getOrNull()
+                    ?: return@launch
+                withContext(Dispatchers.Main.immediate) {
+                    AppLocales.applyIfUnset(language, this@AnaAlarmApp)
+                }
+            }
         } else {
             Log.i(TAG, "Credential storage remains unopened until USER_UNLOCKED")
         }

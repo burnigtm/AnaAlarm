@@ -34,6 +34,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -95,6 +96,7 @@ fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false) {
     var buddy by remember { mutableStateOf(Avatars.DEFAULT) }
     var voicePitch by remember { mutableFloatStateOf(1.05f) }
     var voiceRate by remember { mutableFloatStateOf(1.0f) }
+    var streamingEnabled by remember { mutableStateOf(false) }
     var usageToday by remember {
         mutableStateOf<com.anaalarm.data.TokenUsageSummary?>(null)
     }
@@ -156,6 +158,10 @@ fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false) {
                 buddy = Avatars.from(s.avatar)
                 voicePitch = s.voicePitch
                 voiceRate = s.voiceRate
+                streamingEnabled = s.streamingEnabled
+                // Import must take effect without requiring an extra Save (API 33+ UI + TTS).
+                app.ttsManager.setLanguage(s.language)
+                com.anaalarm.ui.AppLocales.apply(s.language, context)
             }
         }
     }
@@ -175,6 +181,7 @@ fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false) {
         buddy = Avatars.from(s.avatar)
         voicePitch = s.voicePitch
         voiceRate = s.voiceRate
+        streamingEnabled = s.streamingEnabled
         // Dashboard numbers load once per visit; they are informational, not live telemetry.
         usageToday = runCatching { app.memoryStore.usageSummary(daysBack = 0) }.getOrNull()
         usageWeek = runCatching { app.memoryStore.usageSummary(daysBack = 6) }.getOrNull()
@@ -442,7 +449,36 @@ fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            Spacer(Modifier.height(24.dp))
+            SectionTitle(context.getString(R.string.streaming_title))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = context.getString(R.string.streaming_label),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = context.getString(R.string.streaming_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = streamingEnabled,
+                    onCheckedChange = { streamingEnabled = it }
+                )
+            }
+
             Spacer(Modifier.height(12.dp))
+            Text(
+                text = context.getString(R.string.export_device_bound_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
             Row {
                 OutlinedButton(
                     onClick = { exportLauncher.launch("anaalarm-export.txt") },
@@ -477,7 +513,8 @@ fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false) {
                             tone = tone,
                             voicePitch = voicePitch,
                             voiceRate = voiceRate,
-                            avatar = buddy
+                            avatar = buddy,
+                            streamingEnabled = streamingEnabled
                         )
                         app.ttsManager.setLanguage(language)
                         snackbar.showSnackbar(context.getString(R.string.settings_saved))

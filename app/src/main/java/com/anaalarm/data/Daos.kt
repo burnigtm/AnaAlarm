@@ -97,6 +97,14 @@ interface SessionRecordDao {
     @Insert
     suspend fun insert(record: SessionRecordEntity)
 
+    @Query(
+        """
+        SELECT COUNT(*) FROM session_records
+        WHERE startedAt = :startedAt AND endedAt = :endedAt AND turns = :turns
+        """
+    )
+    suspend fun countMatching(startedAt: Long, endedAt: Long, turns: Int): Int
+
     @Query("SELECT * FROM session_records ORDER BY startedAt DESC LIMIT :limit")
     suspend fun getRecent(limit: Int): List<SessionRecordEntity>
 }

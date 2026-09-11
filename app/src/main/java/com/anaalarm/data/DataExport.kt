@@ -138,12 +138,15 @@ object DataExport {
         }
         payload.sessions.forEach { session ->
             runCatching {
-                memory.recordSession(
-                    startedAtMillis = session.startedAt,
-                    endedAtMillis = session.endedAt,
-                    turns = session.turns
-                )
-                restored++
+                if (
+                    memory.recordSessionIfAbsent(
+                        startedAtMillis = session.startedAt,
+                        endedAtMillis = session.endedAt,
+                        turns = session.turns
+                    )
+                ) {
+                    restored++
+                }
             }
         }
         payload.habits.forEach { habit ->

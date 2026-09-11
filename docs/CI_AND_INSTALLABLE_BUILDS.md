@@ -82,7 +82,7 @@ This check boots the minimum-supported Android version on a Google APIs emulator
 3. Runs the required alarm, boot, firing, and notification group. The verdict must be exactly
    34 tests with zero skipped/assumption tests.
 4. Clears both app packages and restores capabilities so the aggregate phase starts clean.
-5. Runs the complete instrumented suite. The verdict must be exactly 189 tests with zero skips.
+5. Runs the complete instrumented suite. The verdict must be exactly 191 tests with zero skips.
 6. Uploads instrumentation output, logcat, activity state, and Android test reports as
    `android-device-api-26`.
 
@@ -91,7 +91,7 @@ reporting a misleading green result.
 
 ### 3. Device tests (API 36)
 
-This check repeats the same 34-test and 189-test, zero-skip gates on the current target SDK. It
+This check repeats the same 34-test and 191-test, zero-skip gates on the current target SDK. It
 also verifies modern exact-alarm and full-screen-intent app-ops. After the instrumented suite it:
 
 1. Builds the minified production-shaped release variant.
