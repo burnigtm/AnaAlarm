@@ -1,5 +1,6 @@
 package com.anaalarm.ui.wakeup
 
+import android.text.format.DateFormat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -26,9 +27,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.anaalarm.R
+import com.anaalarm.alarm.ClockFormat
 import kotlinx.coroutines.delay
 import java.time.LocalTime
-import java.time.format.DateTimeFormatter
 
 /** Minimal wake surface used before credential-encrypted storage becomes available. */
 @Composable
@@ -66,7 +67,11 @@ internal fun DirectBootWakeUpScreen(
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                text = now.format(DateTimeFormatter.ofPattern("HH:mm")),
+                text = ClockFormat.formatTime(
+                    now.hour,
+                    now.minute,
+                    DateFormat.is24HourFormat(context)
+                ),
                 fontSize = 72.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground

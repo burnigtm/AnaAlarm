@@ -34,7 +34,7 @@ This document describes how AnaAlarm is structured, how the pieces fit together,
 |---|---|
 | `Entities.kt` | Room entities: `AlarmEntity` (incl. challenge/ringtone), `MessageEntity`, `DailyLogEntity`, `UsageEntity`, `SessionRecordEntity`, `HabitEventEntity` |
 | `Daos.kt` | Room DAOs with Flow-based observation for alarms and stats queries |
-| `AnaDatabase.kt` | Singleton Room database (`anaalarm.db`), **version 7**, migrations 1→7, exported schemas |
+| `AnaDatabase.kt` | Singleton Room database (`anaalarm.db`), **version 8**, migrations 1→8, exported schemas |
 | `SettingsStore.kt` | DataStore preferences (`anaalarm_settings`); `Flow<AppSettings>`, atomic updates, legacy-key migration |
 | `KeystoreSecretCipher.kt` | AES-GCM credential encryption backed by an app-private Android Keystore key |
 | `DataExport.kt` | Device-bound encrypted export/import of settings/logs/sessions/habits (never the API key) |
@@ -67,15 +67,23 @@ This document describes how AnaAlarm is structured, how the pieces fit together,
 ### `ui/` — screens
 | File | Responsibility |
 |---|---|
-| `AppRoot.kt` | Screen navigation state (Home / AlarmEdit / Settings / Stats) with system `BackHandler` → Home |
+| `AppRoot.kt` | Screen navigation (Home / AlarmEdit / Settings / Stats) with `AnimatedContent`, or an immediate swap when animations are disabled; system Back returns Home. Alarm edit consumes Back itself when it must confirm unsaved edits |
 | `AppLocales.kt` | Per-app `LocaleManager` apply on Settings save and `applyIfUnset` at process start |
-| `home/` | Home screen + `HomeViewModel` (alarms list, delete/toggle, test-session button, permission warning, stats entry, buddy recap) |
-| `alarm/AlarmEditScreen.kt` | Time picker, repeat-day chips, snooze slider, dismissal challenge, custom ringtone, save/cancel |
+| `home/` | Home screen + `HomeViewModel` (alarms list in the system 12/24-hour clock, delete/toggle, test-session button, exact-alarm and denied-mic settings cards, stats entry, buddy recap with “for today” items) |
+| `alarm/AlarmEditScreen.kt` | Time picker, repeat-day chips, snooze slider, dismissal challenge, custom ringtone with Play/Stop preview, unsaved-changes confirm, save/cancel |
 | `settings/SettingsScreen.kt` | API key, name, language, pronouns, tone, voice pitch/rate, wake-up buddy, habits, interests, session length, AI usage, experimental streaming toggle, device-bound export/import |
-| `stats/StatsScreen.kt` | Session/token habit dashboard from Room aggregates |
+| `stats/StatsScreen.kt` | Session/token dashboard from Room; tapping a session opens its saved transcript |
 | `avatar/` | Procedural animal rig (`AnimalAvatar`), species registry (`Avatars`), mood/palette |
 | `wakeup/` | `WakeUpActivity` (full-screen), `SessionController` façade + `SessionListenCycle` / `SessionTurnPipeline` / `SessionDismissal`, `WakeUpScreen` |
 | `theme/Theme.kt` | Material 3 color scheme (light + dark), warm morning palette |
+
+### UX
+
+- **Wake phases.** The buddy and status pill pulse while Ana is speaking, listening, or thinking, and a short haptic tick fires on each of those phase changes. The 25-second listen window from `SessionListenCycle` is counted down on `WakeUpScreen` (`listenDeadlineElapsedRealtime`), not only inside the timeout job.
+- **Navigation.** `AppRoot` uses `AnimatedContent` between Home, alarm edit, Settings, and Stats. When animator duration scale is 0 (system animations off, including CI emulators), it shows the target screen immediately. System Back still returns to Home. Leaving alarm edit with a form that differs from the loaded draft asks to save or discard.
+- **Sound and time.** Alarm edit plays the selected ringtone and stops that preview when the screen leaves composition. Home alarm times, the wake clock (including the direct-boot clock), and `NextAlarmWidgetProvider` use `DateFormat.is24HourFormat`, the same preference as the editor.
+- **Morning memory.** Session end extracts up to three “for today” plans (`MorningMemory`) and stores them beside the raw daily log (`MorningLog`) so the home recap shows them apart from the summary. Habits already checked today are named in the prompt with an instruction not to suggest them again. The session transcript is stored on `session_records` and opened from Stats.
+- **Permissions.** Denying the microphone (the old empty `MainActivity` callback) or missing exact-alarm access shows a Home card whose action opens the relevant settings screen.
 
 ### `AnaAlarmApp.kt` — manual DI
 The `Application` eagerly creates only the storage/scheduler path needed for alarm reconciliation
@@ -165,7 +173,7 @@ alarms(id PK, hour, minute, days bitmask, snoozeMinutes, enabled,
 messages(id PK, sessionId, role "user"|"assistant", content, timestamp)
 daily_logs(id PK, date "yyyy-MM-dd", summary)
 usage(id PK, date, sessionId?, input/output/cached/total tokens, timestamp)
-session_records(id PK, startedAt, endedAt, durationMs, turns)
+session_records(id PK, startedAt, endedAt, durationMs, turns, transcript)
 habit_events(id PK, name, date, done)  -- unique (name, date)
 
 DataStore keys: api_key_encrypted, name, language, habits, interests,
@@ -180,8 +188,10 @@ DataStore keys: api_key_encrypted, name, language, habits, interests,
 - Daily log: up to 900 characters of role-labelled session history, appended (not blank-replaced)
   to today's bounded log. The most recent log before today is injected into the prompt.
 - Raw session messages are deleted after a successful daily log and startup-pruned after seven days.
-- Room **version 7** ships explicit migrations `1→2→…→7`, exported schemas (2–7), a
-  `(sessionId, timestamp)` history index, and a timestamp-only retention index.
+- Room **version 8** ships explicit migrations `1→2→…→8`, exported schemas (2–8), a
+  `(sessionId, timestamp)` history index, and a timestamp-only retention index. Version 8 adds
+  `session_records.transcript` (empty for older rows). “For today” items are packed onto the
+  daily-log summary, not a new column, so export of logs keeps them.
 - `DataExport` encrypts with Keystore alias `anaalarm.export.v1` — restore works on the same
   device only.
 
@@ -195,7 +205,7 @@ DataStore keys: api_key_encrypted, name, language, habits, interests,
 | HTTP/API error | `DeepSeekClient` | Structured `failed`/`incomplete`/HTTP state becomes `ApiException` |
 | Empty response | `DeepSeekClient` | `ApiException("empty response")` |
 | Speech error / silence | `SpeechListener` + `SessionListenCycle` | Generation-safe retry for soft failures; hard/repeated failure switches to text |
-| Mic permission missing | `WakeUpActivity` | `voiceAvailable=false` → text input fallback on screen |
+| Mic permission missing | `WakeUpActivity` / `MainActivity` | Wake session falls back to text input; a denial on Home shows an open-settings card |
 | Schedule failure | `AlarmEditScreen` | Typed failure result; UI never shows the scheduled-success message |
 | TTS unavailable | `TtsManager` + `SessionController` | Bounded failure state and typed fallback; local alarm remains audible |
 | Export from another device | `DataExport` | Decrypt fail-closed; Settings copy explains device-bound exports |

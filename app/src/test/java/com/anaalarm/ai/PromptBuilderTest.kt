@@ -184,6 +184,37 @@ class PromptBuilderTest {
     }
 
     @Test
+    fun `done habits tell Ana not to suggest them again`() {
+        val line = PromptBuilder.doneHabitsLine(
+            habits = listOf("water plants", "stretch"),
+            doneToday = setOf("Stretch")
+        )
+        assertTrue(line.contains("Already done today: stretch"))
+        assertTrue(line.contains("Do not suggest or remind about these again"))
+        assertFalse(line.contains("water plants"))
+
+        val prompt = PromptBuilder.buildInstructions(
+            AppSettings(name = "Sam", habits = listOf("stretch")),
+            now,
+            "",
+            habitsDoneToday = setOf("stretch")
+        )
+        assertTrue(prompt.contains("Do not suggest or remind about these again"))
+    }
+
+    @Test
+    fun `no done habits leaves the habit rule unchanged`() {
+        assertEquals("", PromptBuilder.doneHabitsLine(listOf("stretch"), emptySet()))
+        val prompt = PromptBuilder.buildInstructions(
+            AppSettings(name = "Sam", habits = listOf("stretch")),
+            now,
+            ""
+        )
+        assertTrue(prompt.contains("habits: stretch"))
+        assertFalse(prompt.contains("Already done today"))
+    }
+
+    @Test
     fun `instructions embed the wake-up buddy`() {
         val prompt = PromptBuilder.buildInstructions(
             AppSettings(name = "Sam", avatar = "zebra"),

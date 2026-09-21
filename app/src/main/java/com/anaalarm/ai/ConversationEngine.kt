@@ -36,11 +36,18 @@ class ConversationEngine(
             val streaks = runCatching {
                 memory.habitStreaks(settings.habits)
             }.getOrDefault(emptyMap())
+            val habitsDoneToday = runCatching {
+                memory.habitsForDate(now.toLocalDate())
+                    .filter { it.done }
+                    .map { it.name }
+                    .toSet()
+            }.getOrDefault(emptySet())
             instructions = PromptBuilder.buildInstructions(
                 settings = settings,
                 now = now,
                 yesterday = yesterday,
-                habitStreaks = streaks
+                habitStreaks = streaks,
+                habitsDoneToday = habitsDoneToday
             )
             turnCount = 0
         }
@@ -159,12 +166,14 @@ class ConversationEngine(
             }
             // Statistics are recorded before best-effort transcript finalization so a storage
             // failure in the daily log cannot lose the session's shape.
+            val todayItems = MorningMemory.extract(history)
             memory.recordSession(
                 startedAtMillis = startedAtMillis,
                 endedAtMillis = System.currentTimeMillis(),
-                turns = finishedTurns
+                turns = finishedTurns,
+                transcript = MorningMemory.formatTranscript(history)
             )
-            memory.appendDailyLog(body)
+            memory.appendDailyLog(body, todayItems = todayItems)
             // Conversation rows are transient. Delete them only after the durable daily log
             // succeeds, so a storage failure never destroys the sole copy of the session.
             memory.clearSession(endingSessionId)
@@ -189,6 +198,6 @@ class ConversationEngine(
     }
 
     private companion object {
-        const val GREETING_PROMPT = "Please begin the wake-up greeting now."
+        const val GREETING_PROMPT = MorningMemory.GREETING_PROMPT
     }
 }

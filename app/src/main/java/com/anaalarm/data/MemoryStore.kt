@@ -85,13 +85,28 @@ class MemoryStore(
         messageDao.deleteOlderThan(cutoffTimestamp)
 
     suspend fun todaySummary(): String =
-        dailyLogDao.getByDate(LocalDate.now().toString())?.summary ?: ""
+        MorningLog.unpack(dailyLogDao.getByDate(LocalDate.now().toString())?.summary ?: "").summary
+
+    /** “For today” items stored beside today’s raw summary; empty when none were extracted. */
+    suspend fun todayItems(): List<String> =
+        MorningLog.unpack(dailyLogDao.getByDate(LocalDate.now().toString())?.summary ?: "").items
 
     suspend fun yesterdaySummary(): String {
         val yesterday = dailyLogDao.getLatestBefore(LocalDate.now().toString()) ?: return ""
+        if (yesterday.summary.isBlank()) return ""
         val date = runCatching { LocalDate.parse(yesterday.date, DateTimeFormatter.ISO_LOCAL_DATE) }.getOrNull()
         val dayLabel = date?.toString() ?: yesterday.date
-        return if (yesterday.summary.isBlank()) "" else "$dayLabel: ${yesterday.summary}"
+        val recap = MorningLog.unpack(yesterday.summary)
+        if (recap.summary.isBlank() && recap.items.isEmpty()) return ""
+        val rendered = buildString {
+            append(recap.summary)
+            if (recap.items.isNotEmpty()) {
+                if (recap.summary.isNotBlank()) append(" ")
+                append("For today: ")
+                append(recap.items.joinToString("; "))
+            }
+        }
+        return "$dayLabel: $rendered"
     }
 
     suspend fun saveDailyLog(summary: String, date: LocalDate = LocalDate.now()) {
@@ -110,21 +125,29 @@ class MemoryStore(
      * Adds one completed session to the day's durable memory without erasing an earlier session.
      * Writes are serialized because two alarm sessions can finish close together.
      */
-    suspend fun appendDailyLog(summary: String, date: LocalDate = LocalDate.now()) {
-        val addition = summary.trim()
-        if (addition.isEmpty()) return
+    suspend fun appendDailyLog(
+        summary: String,
+        date: LocalDate = LocalDate.now(),
+        todayItems: List<String> = emptyList()
+    ) {
+        val addition = MorningLog.summaryBody(summary).trim()
+        val incoming = MorningLog.mergeItems(MorningLog.unpack(summary).items, todayItems)
+        if (addition.isEmpty() && incoming.isEmpty()) return
         dailyLogWriteMutex.withLock {
             val dateKey = date.toString()
             val existing = dailyLogDao.getByDate(dateKey)
+            val prior = MorningLog.unpack(existing?.summary.orEmpty())
             val combined = listOfNotNull(
-                existing?.summary?.trim()?.takeIf { it.isNotEmpty() },
-                addition
+                prior.summary.trim().takeIf { it.isNotEmpty() },
+                addition.takeIf { it.isNotEmpty() }
             ).joinToString("\n").takeLast(MAX_DAILY_LOG_CHARS)
+            val merged = MorningLog.mergeItems(prior.items, incoming)
+            if (combined.isEmpty() && merged.isEmpty()) return@withLock
             dailyLogDao.upsert(
                 DailyLogEntity(
                     id = existing?.id ?: 0,
                     date = dateKey,
-                    summary = combined
+                    summary = MorningLog.pack(combined, merged)
                 )
             )
         }
@@ -134,6 +157,7 @@ class MemoryStore(
         // ConversationEngine contributes at most 900 chars per session; retain two full sessions
         // while keeping the next-day prompt bounded for latency and cost.
         const val MAX_DAILY_LOG_CHARS = 1_801
+        const val MAX_TRANSCRIPT_CHARS = 4_000
     }
 
     /**
@@ -167,14 +191,20 @@ class MemoryStore(
         usageDao.summarySince(LocalDate.now().minusDays(daysBack.toLong()).toString())
 
     /** Persists one completed session's shape; degenerate records are ignored. */
-    suspend fun recordSession(startedAtMillis: Long, endedAtMillis: Long, turns: Int) {
+    suspend fun recordSession(
+        startedAtMillis: Long,
+        endedAtMillis: Long,
+        turns: Int,
+        transcript: String = ""
+    ) {
         if (turns <= 0 && endedAtMillis <= startedAtMillis) return
         sessionRecordDao.insert(
             SessionRecordEntity(
                 startedAt = startedAtMillis,
                 endedAt = endedAtMillis,
                 durationMs = (endedAtMillis - startedAtMillis).coerceAtLeast(0L),
-                turns = turns
+                turns = turns,
+                transcript = transcript.take(MAX_TRANSCRIPT_CHARS)
             )
         )
     }
@@ -184,7 +214,12 @@ class MemoryStore(
      * Used by [DataExport.restore] so re-importing the same file does not inflate Stats.
      * @return true when a new row was written.
      */
-    suspend fun recordSessionIfAbsent(startedAtMillis: Long, endedAtMillis: Long, turns: Int): Boolean {
+    suspend fun recordSessionIfAbsent(
+        startedAtMillis: Long,
+        endedAtMillis: Long,
+        turns: Int,
+        transcript: String = ""
+    ): Boolean {
         if (turns <= 0 && endedAtMillis <= startedAtMillis) return false
         if (sessionRecordDao.countMatching(startedAtMillis, endedAtMillis, turns) > 0) return false
         sessionRecordDao.insert(
@@ -192,7 +227,8 @@ class MemoryStore(
                 startedAt = startedAtMillis,
                 endedAt = endedAtMillis,
                 durationMs = (endedAtMillis - startedAtMillis).coerceAtLeast(0L),
-                turns = turns
+                turns = turns,
+                transcript = transcript.take(MAX_TRANSCRIPT_CHARS)
             )
         )
         return true

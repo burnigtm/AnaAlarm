@@ -27,7 +27,7 @@ class AnaDatabaseMigrationTest {
     }
 
     @Test
-    fun `migration one to seven preserves data and creates retention indexes`() = runTest {
+    fun `migration one to eight preserves data and creates retention indexes`() = runTest {
         context.deleteDatabase(TEST_DATABASE)
         createVersionOneDatabase().use { helper ->
             helper.writableDatabase.apply {
@@ -51,7 +51,8 @@ class AnaDatabaseMigrationTest {
                 AnaDatabase.MIGRATION_3_4,
                 AnaDatabase.MIGRATION_4_5,
                 AnaDatabase.MIGRATION_5_6,
-                AnaDatabase.MIGRATION_6_7
+                AnaDatabase.MIGRATION_6_7,
+                AnaDatabase.MIGRATION_7_8
             )
             .allowMainThreadQueries()
             .build()
@@ -95,6 +96,13 @@ class AnaDatabaseMigrationTest {
                 SessionRecordEntity(startedAt = 1L, endedAt = 5L, durationMs = 4L, turns = 2)
             )
             assertEquals(2, migrated.sessionRecordDao().getRecent(10).single().turns)
+            migrated.openHelper.writableDatabase.execSQL(
+                "INSERT INTO session_records (startedAt, endedAt, durationMs, turns) " +
+                    "VALUES (8, 9, 1, 1)"
+            )
+            val legacy = migrated.sessionRecordDao().getRecent(10)
+                .first { it.startedAt == 8L }
+            assertEquals("", legacy.transcript)
 
             assertIndexExists(migrated.openHelper.readableDatabase, "index_usage_date")
 

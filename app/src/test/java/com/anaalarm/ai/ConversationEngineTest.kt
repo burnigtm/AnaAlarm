@@ -306,7 +306,7 @@ class ConversationEngineTest {
         val startedAt = slot<Long>()
         val endedAt = slot<Long>()
         coVerify {
-            memory.recordSession(capture(startedAt), capture(endedAt), 1)
+            memory.recordSession(capture(startedAt), capture(endedAt), 1, any())
         }
         assertTrue(endedAt.captured >= startedAt.captured)
         assertTrue(startedAt.captured > 0)
@@ -325,7 +325,56 @@ class ConversationEngineTest {
         }
         engine.endSession()
 
-        coVerify(exactly = 0) { memory.recordSession(any(), any(), any()) }
+        coVerify(exactly = 0) { memory.recordSession(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `endSession saves today items and the session transcript`() = runTest {
+        coEvery { client.respond(any(), any()) } returns reply("Hi!")
+        engine.startSession(now)
+        coEvery { memory.getSessionHistory(1001L, 40) } returns listOf(
+            ChatMessage("user", "Please begin the wake-up greeting now."),
+            ChatMessage("assistant", "Hi!"),
+            ChatMessage("user", "I will call mom today")
+        )
+
+        engine.endSession()
+
+        val items = slot<List<String>>()
+        coVerify {
+            memory.appendDailyLog(any(), any(), capture(items))
+            memory.recordSession(
+                any(),
+                any(),
+                any(),
+                match { it.contains("You: I will call mom today") && !it.contains("Please begin") }
+            )
+        }
+        assertEquals(listOf("call mom today"), items.captured)
+    }
+
+    @Test
+    fun `startSession tells Ana not to repeat habits already done today`() = runTest {
+        every { settingsStore.settings } returns flowOf(
+            AppSettings(
+                apiKey = "key",
+                name = "Alex",
+                habits = listOf("stretch", "read"),
+                sessionMinutes = 10
+            )
+        )
+        coEvery { memory.habitsForDate(any()) } returns listOf(
+            com.anaalarm.data.HabitEventEntity(name = "stretch", date = "2026-08-01", done = true),
+            com.anaalarm.data.HabitEventEntity(name = "read", date = "2026-08-01", done = false)
+        )
+        val instructions = slot<String>()
+        coEvery { client.respond(capture(instructions), any()) } returns reply("Hi!")
+
+        engine.startSession(now)
+
+        assertTrue(instructions.captured.contains("Already done today: stretch"))
+        assertTrue(instructions.captured.contains("Do not suggest or remind about these again"))
+        assertFalse(instructions.captured.contains("Already done today: stretch, read"))
     }
 
     @Test

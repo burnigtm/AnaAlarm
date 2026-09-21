@@ -27,6 +27,8 @@
 
     <string name="perm_alarm_denied">A permissão de alarme exato é necessária para acordar na hora certa. Conceda a permissão.</string>
     <string name="perm_fullscreen_denied">A permissão de alarme em tela cheia é necessária para a Ana aparecer sobre outros apps quando o alarme tocar — não só como notificação.</string>
+    <string name="perm_mic_denied">O acesso ao microfone foi negado, então a Ana não consegue ouvir você. Abra as configurações para permitir o microfone.</string>
+    <string name="open_settings">Abrir configurações</string>
     <string name="grant_permission">Conceder permissão</string>
 
     <string name="api_key">Chave da API DeepSeek</string>
@@ -76,9 +78,15 @@
     <string name="max_snoozes_label">Máximo de sonecas (0 = ilimitado)</string>
     <string name="ringtone_label">Som do alarme</string>
     <string name="ringtone_pick">Escolher som</string>
+    <string name="ringtone_play">Tocar</string>
+    <string name="ringtone_stop">Parar</string>
     <string name="ringtone_default">Padrão do sistema</string>
+    <string name="unsaved_title">Salvar este alarme?</string>
+    <string name="unsaved_body">Há alterações não salvas.</string>
+    <string name="discard">Descartar</string>
 
     <string name="recap_title">Esta manhã</string>
+    <string name="recap_today_label">Para hoje</string>
     <string name="recap_habits_label">Hábitos de hoje</string>
     <string name="battery_title">Mantenha os alarmes confiáveis</string>
     <string name="battery_body">Alguns celulares encerram apps de alarme durante a noite. Permitir que o AnaAlarm rode sem restrições de bateria torna os alarmes matinais bem mais confiáveis.</string>
@@ -87,6 +95,8 @@
     <string name="stats_title">Estatísticas</string>
     <string name="stats_recent">Sessões recentes</string>
     <string name="stats_empty">Nenhuma sessão concluída ainda. Termine uma sessão de despertar e ela aparecerá aqui.</string>
+    <string name="stats_transcript_title">Transcrição</string>
+    <string name="stats_transcript_empty">Nenhuma transcrição salva para esta sessão.</string>
     <string name="stat_sessions_week">Sessões na semana</string>
     <string name="stat_avg_duration">Duração média</string>
     <string name="stat_tokens_week">Tokens · 7 dias</string>
@@ -122,6 +132,7 @@
 
     <string name="wake_up_title">Bom dia!</string>
     <string name="status_listening">Ouvindo…</string>
+    <string name="listen_countdown">%1$d seg</string>
     <string name="status_speaking">Falando…</string>
     <string name="status_thinking">Pensando…</string>
     <string name="status_starting">Iniciando…</string>

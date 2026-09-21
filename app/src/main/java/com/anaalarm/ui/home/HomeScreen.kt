@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.PowerManager
+import android.text.format.DateFormat
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -67,12 +68,11 @@ import com.anaalarm.AnaAlarmApp
 import com.anaalarm.R
 import com.anaalarm.alarm.AlarmScheduleResult
 import com.anaalarm.alarm.AlarmTriggerCalculator
+import com.anaalarm.alarm.ClockFormat
 import com.anaalarm.alarm.Notifications
 import com.anaalarm.data.AlarmEntity
 import com.anaalarm.ui.wakeup.WakeUpActivity
 import java.time.LocalDate
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,7 +82,9 @@ fun HomeScreen(
     onSettings: () -> Unit,
     onStats: () -> Unit,
     onRequestAlarmPermission: () -> Unit,
-    onRequestFullScreenPermission: () -> Unit
+    onRequestFullScreenPermission: () -> Unit,
+    micRecoveryVisible: Boolean = false,
+    onOpenAppSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as AnaAlarmApp
@@ -92,6 +94,7 @@ fun HomeScreen(
     val alarms by vm.alarms.collectAsState()
     val upcoming by vm.upcomingAlarm.collectAsState()
     val recap by vm.recap.collectAsState()
+    val todayItems by vm.todayItems.collectAsState()
     val habitNames by vm.habitNames.collectAsState()
     val habitsDone by vm.habitsDone.collectAsState()
     val streaks by vm.streaks.collectAsState()
@@ -179,7 +182,16 @@ fun HomeScreen(
             if (!canExact) {
                 PermissionWarningCard(
                     message = context.getString(R.string.perm_alarm_denied),
+                    actionLabel = context.getString(R.string.open_settings),
                     onRequest = onRequestAlarmPermission
+                )
+                Spacer(Modifier.height(12.dp))
+            }
+            if (micRecoveryVisible) {
+                PermissionWarningCard(
+                    message = context.getString(R.string.perm_mic_denied),
+                    actionLabel = context.getString(R.string.open_settings),
+                    onRequest = onOpenAppSettings
                 )
                 Spacer(Modifier.height(12.dp))
             }
@@ -197,10 +209,11 @@ fun HomeScreen(
                 Spacer(Modifier.height(12.dp))
             }
 
-            recap?.let { summary ->
+            if (recap != null || todayItems.isNotEmpty()) {
                 RecapCard(
                     buddy = buddy,
-                    summary = summary,
+                    summary = recap.orEmpty(),
+                    todayItems = todayItems,
                     habitNames = habitNames,
                     habitsDone = habitsDone,
                     streaks = streaks,
@@ -290,7 +303,7 @@ fun HomeScreen(
         AlertDialog(
             onDismissRequest = { confirmDelete = null },
             title = { Text(context.getString(R.string.delete)) },
-            text = { Text(formatTime(alarm.hour, alarm.minute)) },
+            text = { Text(formatTime(context, alarm.hour, alarm.minute)) },
             confirmButton = {
                 TextButton(onClick = {
                     vm.deleteAlarm(alarm)
@@ -306,7 +319,11 @@ fun HomeScreen(
     }
 }
 @Composable
-private fun PermissionWarningCard(message: String, onRequest: () -> Unit) {
+private fun PermissionWarningCard(
+    message: String,
+    onRequest: () -> Unit,
+    actionLabel: String? = null
+) {
     val context = LocalContext.current
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -322,7 +339,7 @@ private fun PermissionWarningCard(message: String, onRequest: () -> Unit) {
             )
             Spacer(Modifier.height(8.dp))
             Button(onClick = onRequest) {
-                Text(context.getString(R.string.grant_permission))
+                Text(actionLabel ?: context.getString(R.string.grant_permission))
             }
         }
     }
@@ -392,13 +409,14 @@ private fun BatteryWarningCard(onOpenBatterySettings: () -> Unit) {
 private fun RecapCard(
     buddy: String,
     summary: String,
+    todayItems: List<String>,
     habitNames: List<String>,
     habitsDone: Set<String>,
     streaks: Map<String, Int>,
     onToggleHabit: (String) -> Unit
 ) {
     val context = LocalContext.current
-    if (summary.isBlank() && habitNames.isEmpty()) return
+    if (summary.isBlank() && todayItems.isEmpty() && habitNames.isEmpty()) return
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -431,6 +449,22 @@ private fun RecapCard(
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
+            }
+            if (todayItems.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = context.getString(R.string.recap_today_label),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Spacer(Modifier.height(4.dp))
+                todayItems.forEach { item ->
+                    Text(
+                        text = "• $item",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
             }
             if (habitNames.isNotEmpty()) {
                 if (summary.isNotBlank()) Spacer(Modifier.height(12.dp))
@@ -489,7 +523,7 @@ private fun AlarmCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = formatTime(alarm.hour, alarm.minute),
+                    text = formatTime(context, alarm.hour, alarm.minute),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = if (alarm.enabled)
@@ -518,8 +552,8 @@ private fun AlarmCard(
     }
 }
 
-private fun formatTime(hour: Int, minute: Int): String =
-    LocalTime.of(hour, minute).format(DateTimeFormatter.ofPattern("HH:mm"))
+private fun formatTime(context: Context, hour: Int, minute: Int): String =
+    ClockFormat.formatTime(hour, minute, DateFormat.is24HourFormat(context))
 
 private val DAY_LABELS = intArrayOf(
     R.string.day_sun,
@@ -536,7 +570,7 @@ private fun formatDays(context: Context, days: Int): String =
         .joinToString(" ") { context.getString(DAY_LABELS[it]) }
 
 private fun formatUpcoming(context: Context, upcoming: UpcomingAlarm): String {
-    val timeStr = formatTime(upcoming.hour, upcoming.minute)
+    val timeStr = formatTime(context, upcoming.hour, upcoming.minute)
     val today = LocalDate.now()
     val date = upcoming.triggerAt.toLocalDate()
     return when {

@@ -53,6 +53,10 @@ class HomeViewModel(
     private val _recap = MutableStateFlow<String?>(null)
     val recap: StateFlow<String?> = _recap.asStateFlow()
 
+    /** Plans extracted at session end, shown apart from the raw summary. */
+    private val _todayItems = MutableStateFlow<List<String>>(emptyList())
+    val todayItems: StateFlow<List<String>> = _todayItems.asStateFlow()
+
     /** Habit names already marked done today. */
     private val _habitsDone = MutableStateFlow<Set<String>>(emptySet())
     val habitsDone: StateFlow<Set<String>> = _habitsDone.asStateFlow()
@@ -76,6 +80,7 @@ class HomeViewModel(
         viewModelScope.launch {
             val today = LocalDate.now()
             _recap.value = memory.todaySummary().trim().ifBlank { null }
+            _todayItems.value = runCatching { memory.todayItems() }.getOrDefault(emptyList())
             _habitsDone.value = memory.habitsForDate(today)
                 .filter { it.done }
                 .map { it.name }

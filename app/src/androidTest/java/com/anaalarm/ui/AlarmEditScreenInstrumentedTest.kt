@@ -12,8 +12,10 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.rule.GrantPermissionRule
+import android.text.format.DateFormat
 import com.anaalarm.MainActivity
 import com.anaalarm.R
+import com.anaalarm.alarm.ClockFormat
 import com.anaalarm.data.AlarmEntity
 import com.anaalarm.support.Screens
 import com.anaalarm.support.TestEnv
@@ -64,7 +66,12 @@ class AlarmEditScreenInstrumentedTest {
         compose.awaitText(str(R.string.new_alarm))
     }
 
-    private fun openEditorFor(time: String) {
+    /** Home list label for the emulator's 12/24-hour setting. The editor button stays `HH:mm`. */
+    private fun homeTime(hour: Int, minute: Int): String =
+        ClockFormat.formatTime(hour, minute, DateFormat.is24HourFormat(TestEnv.context))
+
+    private fun openEditorFor(hour: Int, minute: Int) {
+        val time = homeTime(hour, minute)
         scenario = Screens.launchHome()
         compose.awaitText(str(R.string.app_name))
         compose.awaitText(time)
@@ -124,7 +131,7 @@ class AlarmEditScreenInstrumentedTest {
     @Test
     fun editingAnExistingAlarmUpdatesTheSameRow() = runBlocking {
         val id = TestEnv.app.memoryStore.upsertAlarm(0, 8, 20, 0, 10, true)
-        openEditorFor("08:20")
+        openEditorFor(8, 20)
 
         compose.onAllNodesWithText("M").onFirst().performScrollTo().performClick()
         compose.onNodeWithText(str(R.string.save)).performScrollTo().performClick()
@@ -144,7 +151,7 @@ class AlarmEditScreenInstrumentedTest {
     @Test
     fun editingKeepsTheStoredSnoozeValue() = runBlocking {
         val id = TestEnv.app.memoryStore.upsertAlarm(0, 9, 30, 0, 8, true)
-        openEditorFor("09:30")
+        openEditorFor(9, 30)
 
         compose.onNodeWithText("8 min").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(str(R.string.save)).performScrollTo().performClick()
@@ -156,7 +163,7 @@ class AlarmEditScreenInstrumentedTest {
     @Test
     fun editingADisabledAlarmDoesNotSilentlyEnableIt() = runBlocking {
         val id = TestEnv.app.memoryStore.upsertAlarm(0, 10, 10, 0, 10, false)
-        openEditorFor("10:10")
+        openEditorFor(10, 10)
 
         compose.onNodeWithText(str(R.string.save)).performScrollTo().performClick()
 
@@ -172,7 +179,7 @@ class AlarmEditScreenInstrumentedTest {
         compose.onNodeWithText(str(R.string.save)).performScrollTo().performClick()
 
         val saved = awaitStoredAlarms(1).first()
-        val label = String.format(java.util.Locale.getDefault(), "%02d:%02d", saved.hour, saved.minute)
+        val label = homeTime(saved.hour, saved.minute)
         compose.awaitText(label)
         compose.onNodeWithText(label).performScrollTo().assertIsDisplayed()
     }

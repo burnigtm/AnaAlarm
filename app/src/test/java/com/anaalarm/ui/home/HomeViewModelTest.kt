@@ -166,6 +166,17 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `recap publishes today items apart from the summary`() = runTest {
+        coEvery { memory.todaySummary() } returns "user: hi | assistant: morning"
+        coEvery { memory.todayItems() } returns listOf("call mom", "walk")
+        vm = HomeViewModel(memory, scheduler, settingsStore)
+        advanceUntilIdle()
+
+        assertEquals("user: hi | assistant: morning", vm.recap.value)
+        assertEquals(listOf("call mom", "walk"), vm.todayItems.value)
+    }
+
+    @Test
     fun `buddy falls back to the default for corrupt settings`() = runTest {
         every { settingsStore.settings } returns flowOf(AppSettings(avatar = "unicorn"))
         vm = HomeViewModel(memory, scheduler, settingsStore)

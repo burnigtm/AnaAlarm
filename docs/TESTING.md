@@ -210,7 +210,7 @@ release-gate failure rather than a green no-op.
 | `ai/DeepSeekClientTest` | Request/response contract over MockWebServer on the JVM |
 | `ai/ConversationEngineTest` | Session orchestration with a mocked client |
 | `data/MemoryStoreTest` | Repository logic with fakes |
-| `data/AnaDatabaseMigrationTest` | Host-side real SQLite 1→7 preservation and current-index validation |
+| `data/AnaDatabaseMigrationTest` | Host-side real SQLite 1→8 preservation and current-index validation |
 | `data/SettingsListsTest`, `data/SettingsStoreSanitizeTest` | List join/split and secret sanitising |
 | `data/AlarmEntityTest` | Derived `timeMinutes` |
 | `ui/home/HomeViewModelTest` | Toggle/delete side effects on the scheduler and store |
