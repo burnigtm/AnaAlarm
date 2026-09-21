@@ -17,8 +17,10 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.rule.GrantPermissionRule
+import android.text.format.DateFormat
 import com.anaalarm.MainActivity
 import com.anaalarm.R
+import com.anaalarm.alarm.ClockFormat
 import com.anaalarm.support.Screens
 import com.anaalarm.support.TestEnv
 import com.anaalarm.support.awaitText
@@ -66,6 +68,10 @@ class HomeScreenInstrumentedTest {
         compose.awaitText(str(R.string.app_name))
     }
 
+    /** Home list label for the emulator's 12/24-hour setting. The editor button stays `HH:mm`. */
+    private fun homeTime(hour: Int, minute: Int): String =
+        ClockFormat.formatTime(hour, minute, DateFormat.is24HourFormat(TestEnv.context))
+
     private fun seedAlarm(
         hour: Int = 6,
         minute: Int = 45,
@@ -96,8 +102,9 @@ class HomeScreenInstrumentedTest {
         seedAlarm(hour = 6, minute = 45, days = 0b0001010) // Monday + Wednesday
         open()
 
-        compose.awaitText("06:45")
-        compose.onNodeWithText("06:45").assertIsDisplayed()
+        val time = homeTime(6, 45)
+        compose.awaitText(time)
+        compose.onNodeWithText(time).assertIsDisplayed()
         compose.onNodeWithText(str(R.string.next_alarm)).assertIsDisplayed()
         compose.onNodeWithText(str(R.string.no_alarm)).assertDoesNotExist()
     }
@@ -106,7 +113,7 @@ class HomeScreenInstrumentedTest {
     fun togglingTheSwitchDisablesTheAlarm() {
         val id = seedAlarm()
         open()
-        compose.awaitText("06:45")
+        compose.awaitText(homeTime(6, 45))
 
         compose.onAllNodes(isToggleable()).onFirst().assertIsOn()
         compose.onAllNodes(isToggleable()).onFirst().performClick()
@@ -123,7 +130,7 @@ class HomeScreenInstrumentedTest {
     fun togglingADisabledAlarmBackOnReschedulesIt() {
         val id = seedAlarm(hour = 23, minute = 55, enabled = false)
         open()
-        compose.awaitText("23:55")
+        compose.awaitText(homeTime(23, 55))
 
         compose.onAllNodes(isToggleable()).onFirst().performClick()
 
@@ -137,7 +144,7 @@ class HomeScreenInstrumentedTest {
     fun deleteAsksForConfirmationAndCancelKeepsTheAlarm() {
         val id = seedAlarm()
         open()
-        compose.awaitText("06:45")
+        compose.awaitText(homeTime(6, 45))
 
         compose.onNodeWithContentDescription(str(R.string.delete)).performClick()
         compose.awaitText(str(R.string.cancel))
@@ -152,7 +159,7 @@ class HomeScreenInstrumentedTest {
     fun confirmingTheDialogDeletesTheAlarm() {
         val id = seedAlarm()
         open()
-        compose.awaitText("06:45")
+        compose.awaitText(homeTime(6, 45))
 
         compose.onNodeWithContentDescription(str(R.string.delete)).performClick()
         compose.awaitText(str(R.string.cancel))
@@ -171,9 +178,10 @@ class HomeScreenInstrumentedTest {
     fun tappingAnAlarmOpensTheEditorWithItsValues() {
         seedAlarm(hour = 8, minute = 20)
         open()
-        compose.awaitText("08:20")
+        val time = homeTime(8, 20)
+        compose.awaitText(time)
 
-        compose.onNodeWithText("08:20").performClick()
+        compose.onNodeWithText(time).performClick()
 
         compose.awaitText(str(R.string.edit_alarm))
         compose.onNodeWithText(str(R.string.edit_alarm)).assertIsDisplayed()
@@ -214,7 +222,7 @@ class HomeScreenInstrumentedTest {
         val id = seedAlarm(hour = 9, minute = 15, enabled = false)
         open()
 
-        compose.awaitText("09:15")
+        compose.awaitText(homeTime(9, 15))
         compose.onAllNodes(isToggleable()).onFirst().assertIsOff()
         assertFalse(storedAlarm(id)!!.enabled)
     }

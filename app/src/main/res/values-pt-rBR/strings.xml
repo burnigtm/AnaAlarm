@@ -132,7 +132,7 @@
 
     <string name="wake_up_title">Bom dia!</string>
     <string name="status_listening">Ouvindo…</string>
-    <string name="listen_countdown">%1$d s</string>
+    <string name="listen_countdown">%1$d seg</string>
     <string name="status_speaking">Falando…</string>
     <string name="status_thinking">Pensando…</string>
     <string name="status_starting">Iniciando…</string>

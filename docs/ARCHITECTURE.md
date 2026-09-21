@@ -67,7 +67,7 @@ This document describes how AnaAlarm is structured, how the pieces fit together,
 ### `ui/` — screens
 | File | Responsibility |
 |---|---|
-| `AppRoot.kt` | Screen navigation (Home / AlarmEdit / Settings / Stats) with `AnimatedContent`; system Back returns Home. Alarm edit consumes Back itself when it must confirm unsaved edits |
+| `AppRoot.kt` | Screen navigation (Home / AlarmEdit / Settings / Stats) with `AnimatedContent`, or an immediate swap when animations are disabled; system Back returns Home. Alarm edit consumes Back itself when it must confirm unsaved edits |
 | `AppLocales.kt` | Per-app `LocaleManager` apply on Settings save and `applyIfUnset` at process start |
 | `home/` | Home screen + `HomeViewModel` (alarms list in the system 12/24-hour clock, delete/toggle, test-session button, exact-alarm and denied-mic settings cards, stats entry, buddy recap with “for today” items) |
 | `alarm/AlarmEditScreen.kt` | Time picker, repeat-day chips, snooze slider, dismissal challenge, custom ringtone with Play/Stop preview, unsaved-changes confirm, save/cancel |
@@ -80,7 +80,7 @@ This document describes how AnaAlarm is structured, how the pieces fit together,
 ### UX
 
 - **Wake phases.** The buddy and status pill pulse while Ana is speaking, listening, or thinking, and a short haptic tick fires on each of those phase changes. The 25-second listen window from `SessionListenCycle` is counted down on `WakeUpScreen` (`listenDeadlineElapsedRealtime`), not only inside the timeout job.
-- **Navigation.** `AppRoot` uses `AnimatedContent` between Home, alarm edit, Settings, and Stats. System Back still returns to Home. Leaving alarm edit with a form that differs from the loaded draft asks to save or discard.
+- **Navigation.** `AppRoot` uses `AnimatedContent` between Home, alarm edit, Settings, and Stats. When animator duration scale is 0 (system animations off, including CI emulators), it shows the target screen immediately. System Back still returns to Home. Leaving alarm edit with a form that differs from the loaded draft asks to save or discard.
 - **Sound and time.** Alarm edit plays the selected ringtone and stops that preview when the screen leaves composition. Home alarm times, the wake clock (including the direct-boot clock), and `NextAlarmWidgetProvider` use `DateFormat.is24HourFormat`, the same preference as the editor.
 - **Morning memory.** Session end extracts up to three “for today” plans (`MorningMemory`) and stores them beside the raw daily log (`MorningLog`) so the home recap shows them apart from the summary. Habits already checked today are named in the prompt with an instruction not to suggest them again. The session transcript is stored on `session_records` and opened from Stats.
 - **Permissions.** Denying the microphone (the old empty `MainActivity` callback) or missing exact-alarm access shows a Home card whose action opens the relevant settings screen.
