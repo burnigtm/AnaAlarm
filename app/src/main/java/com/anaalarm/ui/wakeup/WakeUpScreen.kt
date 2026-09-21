@@ -1,5 +1,14 @@
 package com.anaalarm.ui.wakeup
 
+import android.os.SystemClock
+import android.provider.Settings
+import android.text.format.DateFormat
+import android.view.HapticFeedbackConstants
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -37,7 +46,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
@@ -46,11 +57,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.anaalarm.R
+import com.anaalarm.alarm.ClockFormat
 import com.anaalarm.ui.avatar.AnimalAvatar
 import com.anaalarm.ui.avatar.AvatarMood
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import java.time.LocalTime
-import java.time.format.DateTimeFormatter
 
 internal const val WAKE_SNOOZE_TEST_TAG = "wake_snooze_action"
 internal const val WAKE_STOP_TEST_TAG = "wake_stop_action"
@@ -70,20 +82,52 @@ internal fun avatarMoodFor(status: SessionStatus): AvatarMood = when (status) {
 internal fun avatarMood(status: SessionStatus, hasError: Boolean): AvatarMood =
     if (hasError) AvatarMood.SAD else avatarMoodFor(status)
 
+/** Speaking, listening, and thinking are the phases that pulse and tick. */
+internal fun wakePhasePulses(status: SessionStatus): Boolean = when (status) {
+    SessionStatus.SPEAKING, SessionStatus.LISTENING, SessionStatus.THINKING -> true
+    SessionStatus.STARTING, SessionStatus.ENDED -> false
+}
+
 private fun avatarMood(controller: SessionController): AvatarMood =
     avatarMood(controller.status, controller.errorText != null)
 
 @Composable
 fun WakeUpScreen(controller: SessionController) {
     val context = LocalContext.current
+    val view = LocalView.current
     var now by remember { mutableStateOf(LocalTime.now()) }
     var typed by remember { mutableStateOf("") }
+    var listenSeconds by remember { mutableStateOf<Int?>(null) }
     val actionAreaBottomPadding = if (controller.snoozeAvailable) 196.dp else 116.dp
+    val use24Hour = DateFormat.is24HourFormat(context)
 
     LaunchedEffect(Unit) {
         while (true) {
             now = LocalTime.now()
             delay(1000)
+        }
+    }
+
+    var previousPhase by remember { mutableStateOf<SessionStatus?>(null) }
+    LaunchedEffect(controller.status) {
+        val prior = previousPhase
+        previousPhase = controller.status
+        if (prior != null && prior != controller.status && wakePhasePulses(controller.status)) {
+            view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        }
+    }
+
+    LaunchedEffect(controller.status, controller.listenDeadlineElapsedRealtime) {
+        val deadline = controller.listenDeadlineElapsedRealtime
+        if (controller.status != SessionStatus.LISTENING || deadline == null) {
+            listenSeconds = null
+            return@LaunchedEffect
+        }
+        while (isActive) {
+            val left = listenSecondsRemaining(deadline, SystemClock.elapsedRealtime())
+            listenSeconds = left
+            if (left == 0) break
+            delay(200)
         }
     }
 
@@ -118,26 +162,17 @@ fun WakeUpScreen(controller: SessionController) {
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = now.format(DateTimeFormatter.ofPattern("HH:mm")),
+                    text = ClockFormat.formatTime(now.hour, now.minute, use24Hour),
                     fontSize = 72.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(Modifier.height(16.dp))
-                StatusPill(controller.status)
+                WakePhaseHeader(
+                    controller = controller,
+                    listenSeconds = listenSeconds
+                )
             }
-
-            // The wake-up buddy reacts live to every session state: sleepy while starting,
-            // mouth flaps while Ana speaks, perked ears while listening, a thinking pose with
-            // question bubble during model turns, and a celebration jump when the session ends.
-            AnimalAvatar(
-                species = controller.buddy,
-                mood = avatarMood(controller),
-                contentDescription = context.getString(R.string.buddy_label),
-                modifier = Modifier
-                    .size(112.dp)
-                    .testTag(WAKE_BUDDY_TEST_TAG)
-            )
 
             Column(modifier = Modifier.fillMaxWidth()) {
                 if (controller.aiText.isNotBlank()) {
@@ -419,7 +454,65 @@ private fun StopChallengeDialog(
 }
 
 @Composable
-private fun StatusPill(status: SessionStatus) {
+private fun WakePhaseHeader(controller: SessionController, listenSeconds: Int?) {
+    val context = LocalContext.current
+    val pulsing = wakePhasePulses(controller.status)
+    val animationsOff = remember {
+        Settings.Global.getFloat(
+            context.contentResolver,
+            Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f
+        ) == 0f
+    }
+    // Keep the infinite transition out of instrumented tests: a clock that never idles
+    // stalls waitUntil after the first frame, same as the buddy's own animator gate.
+    val scale = if (animationsOff) {
+        1f
+    } else {
+        val ticking by rememberInfiniteTransition(label = "wakePhase").animateFloat(
+            initialValue = 0.94f,
+            targetValue = 1.06f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 700),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "wakePhaseScale"
+        )
+        if (pulsing) ticking else 1f
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        StatusPill(controller.status, scale)
+        if (controller.status == SessionStatus.LISTENING && listenSeconds != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = context.getString(R.string.listen_countdown, listenSeconds),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("wake_listen_countdown")
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        // The wake-up buddy reacts live to every session state: sleepy while starting,
+        // mouth flaps while Ana speaks, perked ears while listening, a thinking pose with
+        // question bubble during model turns, and a celebration jump when the session ends.
+        // Speaking, listening, and thinking also pulse so the phase change is visible.
+        AnimalAvatar(
+            species = controller.buddy,
+            mood = avatarMood(controller),
+            contentDescription = context.getString(R.string.buddy_label),
+            modifier = Modifier
+                .size(112.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .testTag(WAKE_BUDDY_TEST_TAG)
+        )
+    }
+}
+
+@Composable
+private fun StatusPill(status: SessionStatus, pulseScale: Float) {
     val context = LocalContext.current
     val (label, color) = when (status) {
         SessionStatus.STARTING -> context.getString(R.string.status_starting) to Color(0xFFFFC24D)
@@ -439,6 +532,10 @@ private fun StatusPill(status: SessionStatus) {
         Box(
             modifier = Modifier
                 .size(10.dp)
+                .graphicsLayer {
+                    scaleX = pulseScale
+                    scaleY = pulseScale
+                }
                 .clip(CircleShape)
                 .background(color)
         )

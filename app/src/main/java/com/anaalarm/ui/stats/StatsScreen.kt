@@ -1,6 +1,8 @@
 package com.anaalarm.ui.stats
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,13 +10,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -56,6 +58,7 @@ fun StatsScreen(onBack: () -> Unit) {
     var usageToday by remember { mutableStateOf<TokenUsageSummary?>(null) }
     var usageWeek by remember { mutableStateOf<TokenUsageSummary?>(null) }
     var loaded by remember { mutableStateOf(false) }
+    var openTranscript by remember { mutableStateOf<SessionRecordEntity?>(null) }
 
     LaunchedEffect(Unit) {
         records = runCatching { app.memoryStore.recentSessionRecords(limit = 30) }
@@ -149,7 +152,7 @@ fun StatsScreen(onBack: () -> Unit) {
                 }
             } else {
                 records.forEach { record ->
-                    SessionRow(record)
+                    SessionRow(record, onClick = { openTranscript = record })
                     Spacer(Modifier.height(6.dp))
                 }
             }
@@ -167,6 +170,35 @@ fun StatsScreen(onBack: () -> Unit) {
                 )
             }
         }
+    }
+
+    openTranscript?.let { record ->
+        val transcript = record.transcript.trim()
+        AlertDialog(
+            onDismissRequest = { openTranscript = null },
+            title = { Text(context.getString(R.string.stats_transcript_title)) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = if (transcript.isEmpty()) {
+                            context.getString(R.string.stats_transcript_empty)
+                        } else {
+                            transcript
+                        },
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { openTranscript = null }) {
+                    Text(context.getString(R.string.back))
+                }
+            }
+        )
     }
 }
 
@@ -190,10 +222,10 @@ private fun StatCard(label: String, value: String, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun SessionRow(record: SessionRecordEntity) {
+private fun SessionRow(record: SessionRecordEntity, onClick: () -> Unit) {
     val startedAt = Instant.ofEpochMilli(record.startedAt).atZone(ZoneId.systemDefault())
     val timeText = startedAt.format(DateTimeFormatter.ofPattern("EEE d MMM · HH:mm"))
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

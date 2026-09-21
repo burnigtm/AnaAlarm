@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SessionRecordEntity::class,
         HabitEventEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 abstract class AnaDatabase : RoomDatabase() {
@@ -45,7 +45,8 @@ abstract class AnaDatabase : RoomDatabase() {
                         MIGRATION_3_4,
                         MIGRATION_4_5,
                         MIGRATION_5_6,
-                        MIGRATION_6_7
+                        MIGRATION_6_7,
+                        MIGRATION_7_8
                     )
                     .addCallback(rawMessageRetentionCallback())
                     .addCallback(usageRetentionCallback())
@@ -174,6 +175,18 @@ abstract class AnaDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE UNIQUE INDEX IF NOT EXISTS `index_habit_events_name_date` " +
                         "ON `habit_events` (`name`, `date`)"
+                )
+            }
+        }
+
+        /**
+         * Version 8 keeps the wake transcript on the session row so Stats can open it after
+         * the raw message table is cleared. Existing rows get an empty transcript.
+         */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `session_records` ADD COLUMN `transcript` TEXT NOT NULL DEFAULT ''"
                 )
             }
         }

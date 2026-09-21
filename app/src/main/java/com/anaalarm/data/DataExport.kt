@@ -43,7 +43,9 @@ object DataExport {
         val startedAt: Long,
         val endedAt: Long,
         val durationMs: Long,
-        val turns: Int
+        val turns: Int,
+        /** Absent in exports written before transcripts were stored. */
+        val transcript: String = ""
     )
 
     @Serializable
@@ -88,7 +90,8 @@ object DataExport {
                     startedAt = it.startedAt,
                     endedAt = it.endedAt,
                     durationMs = it.durationMs,
-                    turns = it.turns
+                    turns = it.turns,
+                    transcript = it.transcript
                 )
             },
             habits = memory.recentHabitEvents(daysBack = 60).map {
@@ -142,7 +145,8 @@ object DataExport {
                     memory.recordSessionIfAbsent(
                         startedAtMillis = session.startedAt,
                         endedAtMillis = session.endedAt,
-                        turns = session.turns
+                        turns = session.turns,
+                        transcript = session.transcript
                     )
                 ) {
                     restored++

@@ -1,5 +1,6 @@
 package com.anaalarm.ui.wakeup
 
+import android.os.SystemClock
 import android.speech.SpeechRecognizer
 import android.util.Log
 import com.anaalarm.AnaAlarmApp
@@ -34,6 +35,7 @@ internal class SessionListenCycle(
         fun speak(text: String)
         fun languageTag(): String
         fun isTimeUp(): Boolean
+        fun onListenDeadline(elapsedRealtime: Long?)
     }
 
     private var settleJob: Job? = null
@@ -74,9 +76,12 @@ internal class SessionListenCycle(
         host.partialUserText = ""
         host.voiceHint = app.getString(R.string.status_listening)
         app.speechListener.startListening(host.languageTag())
+        val deadline = SystemClock.elapsedRealtime() + LISTEN_TIMEOUT_MS
+        host.onListenDeadline(deadline)
         listenTimeoutJob = scope.launch {
-            delay(LISTEN_TIMEOUT_MS)
+            delay((deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0L))
             if (!host.isCurrentVoiceGeneration(generation) || host.isTextInputActive()) return@launch
+            host.onListenDeadline(null)
             app.speechListener.stopListening()
             host.silentStreak++
             when {
@@ -96,6 +101,7 @@ internal class SessionListenCycle(
         if (host.isTerminal() || host.status != SessionStatus.LISTENING) return
         listenTimeoutJob?.cancel()
         listenTimeoutJob = null
+        host.onListenDeadline(null)
         host.partialUserText = ""
 
         // 12/13 are language-not-supported/language-unavailable on API 31+. SpeechListener first
@@ -138,14 +144,22 @@ internal class SessionListenCycle(
         listenTimeoutJob = null
         listenRetryJob?.cancel()
         listenRetryJob = null
+        host.onListenDeadline(null)
         if (stopRecognizer) app.speechListener.stopListening()
     }
 
     companion object {
         private const val TAG = "AnaSession"
-        private const val LISTEN_TIMEOUT_MS = 25_000L
+        internal const val LISTEN_TIMEOUT_MS = 25_000L
         private const val MIC_SETTLE_MS = 175L
         private const val LISTEN_RETRY_MS = 350L
         const val MAX_SILENT_CYCLES = 2
     }
+}
+
+/** Whole seconds left in the mic listen window, rounded up so the countdown starts at 25. */
+internal fun listenSecondsRemaining(deadlineElapsedRealtime: Long, nowElapsedRealtime: Long): Int {
+    val left = deadlineElapsedRealtime - nowElapsedRealtime
+    if (left <= 0L) return 0
+    return ((left + 999L) / 1000L).toInt()
 }

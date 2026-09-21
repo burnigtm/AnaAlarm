@@ -12,7 +12,8 @@ object PromptBuilder {
         settings: AppSettings,
         now: LocalDateTime,
         yesterday: String,
-        habitStreaks: Map<String, Int> = emptyMap()
+        habitStreaks: Map<String, Int> = emptyMap(),
+        habitsDoneToday: Set<String> = emptySet()
     ): String {
         val name = settings.name.ifBlank { "there" }
         val languageName = if (settings.language == "pt") "Portuguese (Brazil)" else "English"
@@ -24,6 +25,8 @@ object PromptBuilder {
         val toneDirective = toneDirective(settings.tone)
         val streakContext = streakLine(habitStreaks)
         val buddyContext = buddyLine(settings.avatar)
+        val doneSuffix = doneHabitsLine(settings.habits, habitsDoneToday)
+            .let { if (it.isEmpty()) "" else " $it" }
 
         return """
             You are Ana, the warm, cheerful and energetic morning companion of $name.
@@ -41,7 +44,7 @@ object PromptBuilder {
             1. On the very first message, greet $name warmly with good morning and ask how the night was.
             2. Over the conversation run 2 or 3 quick mini-quizzes (for example a simple math question, a memory question about yesterday, or general knowledge). Keep every question short and give the answer right after.
             3. Ask what $name plans to do today, and remember it.
-            4. Gently remind about ${p.possessive} habits: $habits. Ask about them naturally, like "Did you water the plants?".
+            4. Gently remind about ${p.possessive} habits: $habits. Ask about them naturally, like "Did you water the plants?".$doneSuffix
             5. Bring up ${p.possessive} interests when it fits the conversation: $interests.
             6. Context from a previous day: $yesterdayContext. If ${p.subject} promised something, ask how it went.
             7. Keep the conversation flowing for around $minutes minutes, gradually building energy so it ends feeling like "time to get up!".
@@ -49,6 +52,19 @@ object PromptBuilder {
             9. If the user says something unclear, gently steer the conversation back to waking up.
             10. If asked to wrap up the session, give a final energetic good-morning send-off in 2 or 3 short sentences.
         """.trimIndent()
+    }
+
+    /**
+     * Tells Ana to leave habits that are already checked today alone.
+     * An empty overlap yields "" so the habit rule stays unchanged.
+     */
+    fun doneHabitsLine(habits: List<String>, doneToday: Set<String>): String {
+        if (doneToday.isEmpty() || habits.isEmpty()) return ""
+        val done = habits.filter { habit ->
+            doneToday.any { it.equals(habit, ignoreCase = true) }
+        }
+        if (done.isEmpty()) return ""
+        return "Already done today: ${done.joinToString(", ")}. Do not suggest or remind about these again."
     }
 
     /** Celebrates active streaks; an empty map yields a blank line placeholder. */

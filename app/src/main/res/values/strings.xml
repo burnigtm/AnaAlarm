@@ -27,6 +27,8 @@
 
     <string name="perm_alarm_denied">Exact alarm permission is needed to wake you on time. Please grant it.</string>
     <string name="perm_fullscreen_denied">Full-screen alarm permission is needed so Ana can appear over other apps when the alarm rings — not just as a notification.</string>
+    <string name="perm_mic_denied">Microphone access was denied, so Ana can\'t hear you. Open settings to allow the microphone.</string>
+    <string name="open_settings">Open settings</string>
     <string name="grant_permission">Grant permission</string>
 
     <string name="api_key">DeepSeek API key</string>
@@ -76,9 +78,15 @@
     <string name="max_snoozes_label">Max snoozes (0 = unlimited)</string>
     <string name="ringtone_label">Alarm sound</string>
     <string name="ringtone_pick">Choose sound</string>
+    <string name="ringtone_play">Play</string>
+    <string name="ringtone_stop">Stop</string>
     <string name="ringtone_default">System default</string>
+    <string name="unsaved_title">Save this alarm?</string>
+    <string name="unsaved_body">You have unsaved changes.</string>
+    <string name="discard">Discard</string>
 
     <string name="recap_title">This morning</string>
+    <string name="recap_today_label">For today</string>
     <string name="recap_habits_label">Today\'s habits</string>
     <string name="battery_title">Keep alarms reliable</string>
     <string name="battery_body">Some phones aggressively stop alarm apps overnight. Allowing AnaAlarm to run without battery restrictions makes morning alarms far more dependable.</string>
@@ -87,6 +95,8 @@
     <string name="stats_title">Statistics</string>
     <string name="stats_recent">Recent sessions</string>
     <string name="stats_empty">No completed sessions yet. Finish a wake-up session and it will appear here.</string>
+    <string name="stats_transcript_title">Transcript</string>
+    <string name="stats_transcript_empty">No transcript saved for this session.</string>
     <string name="stat_sessions_week">Sessions this week</string>
     <string name="stat_avg_duration">Avg session</string>
     <string name="stat_tokens_week">Tokens · 7 days</string>
@@ -122,6 +132,7 @@
 
     <string name="wake_up_title">Good morning!</string>
     <string name="status_listening">Listening…</string>
+    <string name="listen_countdown">%1$d s</string>
     <string name="status_speaking">Speaking…</string>
     <string name="status_thinking">Thinking…</string>
     <string name="status_starting">Starting…</string>

@@ -10,9 +10,9 @@ import android.content.Intent
 import android.widget.RemoteViews
 import com.anaalarm.MainActivity
 import com.anaalarm.R
+import android.text.format.DateFormat
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 /**
  * Home-screen widget showing the system's next scheduled alarm clock entry.
@@ -28,8 +28,6 @@ class NextAlarmWidgetProvider : AppWidgetProvider() {
     }
 
     companion object {
-        private val TIME_FORMAT = DateTimeFormatter.ofPattern("EEE HH:mm")
-
         /** Pushes current state to every placed widget; safe from any process state. */
         fun updateAll(context: Context) {
             val manager = AppWidgetManager.getInstance(context) ?: return
@@ -51,7 +49,10 @@ class NextAlarmWidgetProvider : AppWidgetProvider() {
                 )
                 views.setTextViewText(
                     R.id.widget_time,
-                    TIME_FORMAT.format(Instant.ofEpochMilli(next.triggerTime).atZone(ZoneId.systemDefault()))
+                    ClockFormat.formatZoned(
+                        Instant.ofEpochMilli(next.triggerTime).atZone(ZoneId.systemDefault()),
+                        DateFormat.is24HourFormat(context)
+                    )
                 )
             } else {
                 views.setTextViewText(

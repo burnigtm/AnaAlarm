@@ -65,6 +65,12 @@ class SessionController(
     /** Species of the animated wake-up buddy rendered beside the conversation. */
     var buddy by mutableStateOf(Avatars.DEFAULT)
         private set
+    /**
+     * Elapsed-realtime deadline of the current 25s mic listen window, or null when Ana is
+     * not waiting on the microphone. The wake screen counts this down.
+     */
+    var listenDeadlineElapsedRealtime by mutableStateOf<Long?>(null)
+        private set
 
     val snoozeAvailable: Boolean get() = alarmId >= 1L
 
@@ -135,6 +141,9 @@ class SessionController(
                 override fun speak(text: String) = this@SessionController.speak(text)
                 override fun languageTag() = languageTag
                 override fun isTimeUp() = this@SessionController.isTimeUp()
+                override fun onListenDeadline(elapsedRealtime: Long?) {
+                    listenDeadlineElapsedRealtime = elapsedRealtime
+                }
             }
         )
 

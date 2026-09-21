@@ -1,5 +1,6 @@
 package com.anaalarm.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -73,7 +74,10 @@ data class SessionRecordEntity(
     val startedAt: Long,
     val endedAt: Long,
     val durationMs: Long,
-    val turns: Int
+    val turns: Int,
+    /** Saved wake transcript; empty for sessions recorded before schema 8 or without speech. */
+    @ColumnInfo(defaultValue = "''")
+    val transcript: String = ""
 )
 
 /** One habit's done/not-done mark for one day; at most one row per (name, date). */

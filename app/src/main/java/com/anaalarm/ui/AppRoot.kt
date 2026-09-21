@@ -6,11 +6,20 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.anaalarm.ui.alarm.AlarmEditScreen
 import com.anaalarm.ui.home.HomeScreen
@@ -25,38 +34,57 @@ private sealed interface Screen {
 }
 
 @Composable
-fun AppRoot() {
+fun AppRoot(micRecoveryVisible: Boolean = false) {
     var screen by remember { mutableStateOf<Screen>(Screen.Home) }
     val context = LocalContext.current
 
     // Nested screens previously finished MainActivity on system Back; keep them on Home instead.
-    BackHandler(enabled = screen !is Screen.Home) {
+    // Alarm edit installs its own handler while unsaved changes need a confirm dialog.
+    BackHandler(enabled = screen !is Screen.Home && screen !is Screen.AlarmEdit) {
         screen = Screen.Home
     }
 
-    when (val current = screen) {
-        is Screen.Home -> HomeScreen(
-            onEditAlarm = { id -> screen = Screen.AlarmEdit(id) },
-            onAddAlarm = { screen = Screen.AlarmEdit(-1L) },
-            onSettings = { screen = Screen.Settings },
-            onStats = { screen = Screen.Stats },
-            onRequestAlarmPermission = {
-                requestExactAlarmPermission(context)
-            },
-            onRequestFullScreenPermission = {
-                requestFullScreenIntentPermission(context)
-            }
-        )
-        is Screen.AlarmEdit -> AlarmEditScreen(
-            alarmId = current.alarmId,
-            onBack = { screen = Screen.Home }
-        )
-        is Screen.Settings -> SettingsScreen(
-            onBack = { screen = Screen.Home }
-        )
-        is Screen.Stats -> StatsScreen(
-            onBack = { screen = Screen.Home }
-        )
+    AnimatedContent(
+        targetState = screen,
+        modifier = Modifier.fillMaxSize(),
+        transitionSpec = {
+            val backHome = targetState is Screen.Home && initialState !is Screen.Home
+            val enter = slideInHorizontally(tween(220)) { full ->
+                if (backHome) -full / 5 else full / 5
+            } + fadeIn(tween(220))
+            val exit = slideOutHorizontally(tween(220)) { full ->
+                if (backHome) full / 5 else -full / 5
+            } + fadeOut(tween(180))
+            enter togetherWith exit
+        },
+        label = "mainScreens"
+    ) { current ->
+        when (current) {
+            is Screen.Home -> HomeScreen(
+                onEditAlarm = { id -> screen = Screen.AlarmEdit(id) },
+                onAddAlarm = { screen = Screen.AlarmEdit(-1L) },
+                onSettings = { screen = Screen.Settings },
+                onStats = { screen = Screen.Stats },
+                onRequestAlarmPermission = {
+                    requestExactAlarmPermission(context)
+                },
+                onRequestFullScreenPermission = {
+                    requestFullScreenIntentPermission(context)
+                },
+                micRecoveryVisible = micRecoveryVisible,
+                onOpenAppSettings = { openAppDetails(context) }
+            )
+            is Screen.AlarmEdit -> AlarmEditScreen(
+                alarmId = current.alarmId,
+                onBack = { screen = Screen.Home }
+            )
+            is Screen.Settings -> SettingsScreen(
+                onBack = { screen = Screen.Home }
+            )
+            is Screen.Stats -> StatsScreen(
+                onBack = { screen = Screen.Home }
+            )
+        }
     }
 }
 

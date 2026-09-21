@@ -1,8 +1,12 @@
 package com.anaalarm.ui.alarm
 
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.media.RingtoneManager
+import android.net.Uri
 import android.text.format.DateFormat
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -39,6 +44,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -97,6 +103,42 @@ fun AlarmEditScreen(
     var challengeType by remember { mutableIntStateOf(0) }
     var maxSnoozes by remember { mutableIntStateOf(0) }
     var ringtoneUri by remember { mutableStateOf<String?>(null) }
+    var baseline by remember { mutableStateOf<AlarmDraft?>(null) }
+    var showUnsaved by remember { mutableStateOf(false) }
+    val preview = remember { RingtonePreview(context.applicationContext) }
+    val persistAlarm = remember { PersistSlot() }
+
+    DisposableEffect(preview) {
+        onDispose { preview.stop() }
+    }
+    LaunchedEffect(ringtoneUri) {
+        if (preview.playing) preview.stop()
+    }
+
+    fun currentDraft() = AlarmDraft(
+        hour = hour,
+        minute = minute,
+        days = days,
+        snoozeMinutes = snooze,
+        enabled = enabled,
+        challengeType = challengeType,
+        maxSnoozes = maxSnoozes,
+        ringtoneUri = ringtoneUri
+    )
+
+    fun requestLeave() {
+        val saved = baseline
+        if (loaded && saved != null && alarmDraftChanged(saved, currentDraft())) {
+            showUnsaved = true
+        } else {
+            preview.stop()
+            onBack()
+        }
+    }
+
+    BackHandler(enabled = !showUnsaved) {
+        requestLeave()
+    }
 
     val ringtonePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -126,6 +168,16 @@ fun AlarmEditScreen(
             val settings = app.settingsStore.settings.first()
             snooze = settings.snoozeMinutes
         }
+        baseline = AlarmDraft(
+            hour = hour,
+            minute = minute,
+            days = days,
+            snoozeMinutes = snooze,
+            enabled = enabled,
+            challengeType = challengeType,
+            maxSnoozes = maxSnoozes,
+            ringtoneUri = ringtoneUri
+        )
         loaded = true
     }
 
@@ -181,7 +233,7 @@ fun AlarmEditScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { requestLeave() }) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = context.getString(R.string.back),
@@ -303,6 +355,14 @@ fun AlarmEditScreen(
                 TextButton(onClick = { ringtoneUri = null }) {
                     Text(context.getString(R.string.ringtone_default))
                 }
+                OutlinedButton(onClick = { preview.toggle(ringtoneUri) }) {
+                    Text(
+                        context.getString(
+                            if (preview.playing) R.string.ringtone_stop else R.string.ringtone_play
+                        )
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
                 OutlinedButton(onClick = {
                     val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
                         putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
@@ -350,9 +410,7 @@ fun AlarmEditScreen(
             }
 
             Spacer(Modifier.height(32.dp))
-            Row {
-                Button(
-                    onClick = {
+            persistAlarm.run = {
                         scope.launch {
                             if (saving) return@launch
                             saving = true
@@ -476,22 +534,116 @@ fun AlarmEditScreen(
                                 snackbar.showSnackbar(
                                     context.getString(R.string.alarm_schedule_failed)
                                 )
-                            } finally {
+                            }                             finally {
                                 saving = false
                             }
                         }
-                    },
+            }
+            Row {
+                Button(
+                    onClick = { persistAlarm.run() },
                     enabled = !saving && loaded,
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(context.getString(R.string.save))
                 }
                 Spacer(Modifier.size(12.dp))
-                OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) {
+                OutlinedButton(onClick = { requestLeave() }, modifier = Modifier.weight(1f)) {
                     Text(context.getString(R.string.cancel))
                 }
             }
             Spacer(Modifier.height(24.dp))
+        }
+    }
+
+    if (showUnsaved) {
+        AlertDialog(
+            onDismissRequest = { showUnsaved = false },
+            title = { Text(context.getString(R.string.unsaved_title)) },
+            text = { Text(context.getString(R.string.unsaved_body)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showUnsaved = false
+                        persistAlarm.run()
+                    },
+                    enabled = !saving && loaded
+                ) {
+                    Text(context.getString(R.string.save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showUnsaved = false
+                    preview.stop()
+                    onBack()
+                }) {
+                    Text(context.getString(R.string.discard))
+                }
+            }
+        )
+    }
+}
+
+/**
+ * Short preview of the selected alarm sound. Released when the editor leaves composition
+ * so playback cannot continue on Home.
+ */
+private class PersistSlot {
+    var run: () -> Unit = {}
+}
+
+private class RingtonePreview(private val context: android.content.Context) {
+    private var player: MediaPlayer? = null
+    var playing by androidx.compose.runtime.mutableStateOf(false)
+        private set
+
+    fun toggle(uriString: String?) {
+        if (playing) stop() else play(uriString)
+    }
+
+    fun play(uriString: String?) {
+        stop()
+        val uri = uriString?.let { runCatching { Uri.parse(it) }.getOrNull() }
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            ?: return
+        val created = runCatching { start(uri) }.getOrNull() ?: return
+        player = created
+    }
+
+    fun stop() {
+        player?.let { tone ->
+            runCatching { if (tone.isPlaying) tone.stop() }
+            runCatching { tone.release() }
+        }
+        player = null
+        playing = false
+    }
+
+    private fun start(uri: Uri): MediaPlayer? {
+        val tone = MediaPlayer()
+        return try {
+            tone.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            tone.setDataSource(context, uri)
+            tone.setOnCompletionListener { stop() }
+            tone.setOnErrorListener { _, _, _ ->
+                stop()
+                true
+            }
+            tone.setOnPreparedListener {
+                it.start()
+                playing = true
+            }
+            tone.prepareAsync()
+            tone
+        } catch (_: Exception) {
+            runCatching { tone.release() }
+            null
         }
     }
 }

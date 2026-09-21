@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -157,6 +158,29 @@ class MemoryStoreTest {
     fun `todaySummary reads saved log for today`() = runTest {
         memory.saveDailyLog("today plan")
         assertEquals("today plan", memory.todaySummary())
+    }
+
+    @Test
+    fun `append daily log stores for-today items apart from the summary`() = runTest {
+        val day = LocalDate.of(2026, 8, 1)
+        memory.appendDailyLog(
+            summary = "user: I will call mom",
+            date = day,
+            todayItems = listOf("call mom", "walk", "read", "stretch")
+        )
+        memory.appendDailyLog(
+            summary = "assistant: bye",
+            date = day,
+            todayItems = listOf("call mom", "cook")
+        )
+
+        val stored = MorningLog.unpack(db.dailyLogDao().getByDate(day.toString())!!.summary)
+        assertEquals("user: I will call mom\nassistant: bye", stored.summary)
+        assertEquals(listOf("stretch", "call mom", "cook"), stored.items)
+        assertFalse(
+            MorningLog.unpack(db.dailyLogDao().getByDate(day.toString())!!.summary)
+                .summary.contains("<<<ana-for-today>>>")
+        )
     }
 
     @Test

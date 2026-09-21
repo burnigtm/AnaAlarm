@@ -185,6 +185,10 @@ suites: `SettingsBuddyInstrumentedTest` (4), `HomeRecapBuddyInstrumentedTest` (2
 `SettingsStoreInstrumentedTest` cases. Aggregate device lock: 173 → 189 → 191
 (audit Wave 0: system-Back navigation + DataExport Keystore round-trip).
 
+## Interactivity — wake feedback and morning memory
+
+Wake phases pulse and give a short haptic tick when Ana starts speaking, listening, or thinking, and the 25-second microphone window counts down on the wake screen. Home, the wake clock, and the next-alarm widget follow the system 12/24-hour setting. Moves between Home, alarm edit, Settings, and Stats animate, and system Back still returns to Home. Alarm edit can play the chosen ringtone (and stops on leave) and asks before discarding unsaved edits. A stats row opens the transcript saved on the session record. At session end Ana keeps up to three “for today” items on the home recap, separate from the raw summary, and the wake prompt tells her not to suggest habits already checked that morning. A denied microphone or exact-alarm permission shows a Home card that opens settings.
+
 ## Deferred intentionally
 
 - "Talk to Ana anytime" free-chat entry point (largest UI surface, least alarm value).
