@@ -1,6 +1,7 @@
 package com.anaalarm.ui.wakeup
 
 import androidx.compose.foundation.background
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -36,9 +37,11 @@ internal fun DirectBootWakeUpScreen(
     alarmId: Long,
     snoozeMinutes: Int?,
     onSnooze: () -> Boolean,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    snoozesRemaining: Int? = null
 ) {
     val context = LocalContext.current
+    BackHandler(onBack = onStop)
     var now by remember { mutableStateOf(LocalTime.now()) }
     var snoozeFailed by remember(alarmId) { mutableStateOf(false) }
 
@@ -83,14 +86,17 @@ internal fun DirectBootWakeUpScreen(
                 Spacer(Modifier.height(12.dp))
             }
             if (snoozeMinutes != null) {
+                Text(text = snoozesRemaining?.let { context.getString(R.string.snooze_remaining, it) }
+                    ?: context.getString(R.string.max_snoozes_unlimited))
                 OutlinedButton(
                     onClick = { snoozeFailed = !onSnooze() },
+                    enabled = snoozesRemaining != 0,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp)
                 ) {
                     Text(
-                        text = context.getString(R.string.snooze_action),
+                        text = context.getString(R.string.snooze_minutes_action, snoozeMinutes),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.SemiBold
                     )

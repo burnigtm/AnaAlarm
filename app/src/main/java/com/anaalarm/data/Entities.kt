@@ -4,6 +4,18 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
+/** Inferred memories remain editable; deleted entries block identical automatic re-imports. */
+@Entity(tableName = "companion_memories", indices = [Index(value = ["normalized"], unique = true)])
+data class CompanionMemoryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val content: String,
+    val normalized: String,
+    val kind: String,
+    val inferred: Boolean = true,
+    val deleted: Boolean = false,
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
 @Entity(tableName = "alarms")
 data class AlarmEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

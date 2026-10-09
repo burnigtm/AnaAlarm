@@ -238,4 +238,23 @@ class MemoryStoreTest {
         assertEquals(60_000L, records[1].durationMs)
         assertEquals(5, records[1].turns)
     }
+    @Test fun `editing and forgetting memories preserves user choices during automatic extraction`() = runTest {
+        memory.remember("Likes hiking", "fact")
+        val id = memory.promptMemories().single().id
+        memory.editMemory(id, "Likes swimming")
+        memory.remember("Likes hiking", "fact")
+        assertEquals("Likes swimming", memory.promptMemories().single().content)
+        assertTrue(!memory.promptMemories().single().inferred)
+        memory.forgetMemory(id)
+        memory.remember("Likes hiking", "fact")
+        assertTrue(memory.promptMemories().isEmpty())
+    }
+
+    @Test fun `reflection replaces only its recap preserving concurrent session recap`() = runTest {
+        memory.appendDailyLog("First conversation")
+        memory.appendDailyLog("Second conversation")
+        memory.replaceRecapEntry("First conversation", "Readable first recap")
+        assertEquals("Readable first recap\nSecond conversation", memory.todaySummary())
+    }
+
 }

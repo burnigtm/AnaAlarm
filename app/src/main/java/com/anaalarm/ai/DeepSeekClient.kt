@@ -11,6 +11,11 @@ import com.anaalarm.telemetry.LatencyBoundary
 import com.anaalarm.telemetry.LatencyMetric
 import com.anaalarm.telemetry.LatencyMetrics
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -144,7 +149,14 @@ class DeepSeekClient(
         require(requestTimeoutMillis > 0) { "requestTimeoutMillis must be positive" }
     }
 
-    suspend fun respond(instructions: String, history: List<ChatMessageItem>): ModelReply {        val key = settingsStore.settings.first().apiKey.trim()
+    suspend fun respond(instructions: String, history: List<ChatMessageItem>): ModelReply =
+        respondWithLimit(instructions, history, MAX_OUTPUT_TOKENS)
+
+    suspend fun reflect(instructions: String, history: List<ChatMessageItem>): ModelReply =
+        respondWithLimit(instructions, history, 512)
+
+    private suspend fun respondWithLimit(instructions: String, history: List<ChatMessageItem>, maxOutputTokens: Int): ModelReply {
+        val key = settingsStore.settings.first().apiKey.trim()
         if (key.isBlank()) throw ApiException("no api key")
 
         val request = ResponsesRequest(
@@ -152,7 +164,7 @@ class DeepSeekClient(
             input = history.takeIf { it.isNotEmpty() },
             temperature = 0.9,
             reasoning = ReasoningOptions(effort = "none"),
-            maxOutputTokens = MAX_OUTPUT_TOKENS
+            maxOutputTokens = maxOutputTokens
         )
 
         val requestId = requestSequence.incrementAndGet()
@@ -306,13 +318,13 @@ class DeepSeekClient(
                 val response = api.createResponseStream("Bearer $key", request)
                 val subtype = response.contentType()?.subtype?.lowercase()
                 if (subtype != EVENT_STREAM_SUBTYPE) {
-                    response.close()
+                    closeStreamResponse(response)
                     throw SseProtocolException("unexpected content type: $subtype")
                 }
                 try {
-                    readStream(response, startedNanos, requestId, onTextDelta)
+                    readStreamOffThread(response, startedNanos, requestId, onTextDelta)
                 } finally {
-                    response.close()
+                    closeStreamResponse(response)
                 }
             }
 
@@ -372,6 +384,29 @@ class DeepSeekClient(
     }
 
     /** Reads one SSE stream to its semantic terminal, returning the accumulated visible text. */
+    private suspend fun readStreamOffThread(
+        response: ResponseBody,
+        startedNanos: Long,
+        requestId: Long,
+        onTextDelta: suspend (String) -> Unit
+    ): CompletedStream = coroutineScope {
+        val consumerContext = currentCoroutineContext()
+        val reader = async(Dispatchers.IO) {
+            readStream(response, startedNanos, requestId) { delta ->
+                withContext(consumerContext) { onTextDelta(delta) }
+            }
+        }
+        try { reader.await() }
+        finally {
+            // Close before joining the cancelled reader, so a blocked socket read wakes promptly.
+            reader.cancel()
+            closeStreamResponse(response)
+        }
+    }
+
+    private suspend fun closeStreamResponse(response: ResponseBody) =
+        withContext(NonCancellable + Dispatchers.IO) { response.close() }
+
     private suspend fun readStream(
         response: ResponseBody,
         startedNanos: Long,

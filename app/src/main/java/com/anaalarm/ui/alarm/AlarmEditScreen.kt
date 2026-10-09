@@ -6,6 +6,8 @@ import android.text.format.DateFormat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -44,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -51,6 +54,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -67,7 +72,7 @@ import java.time.DayOfWeek
 import java.time.format.TextStyle
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AlarmEditScreen(
     alarmId: Long,
@@ -79,23 +84,23 @@ fun AlarmEditScreen(
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
 
-    var loaded by remember { mutableStateOf(false) }
+    var loaded by rememberSaveable { mutableStateOf(false) }
     val scroll = rememberScrollState()
-    var challengeY by remember { mutableIntStateOf(0) }
+    var challengeY by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(loaded, scrollToChallenge, challengeY) {
         if (loaded && scrollToChallenge && challengeY > 0) {
             scroll.scrollTo((challengeY - 16).coerceAtLeast(0))
         }
     }
-    var hour by remember { mutableIntStateOf(7) }
-    var minute by remember { mutableIntStateOf(0) }
-    var days by remember { mutableIntStateOf(0) }
-    var snooze by remember { mutableIntStateOf(10) }
-    var enabled by remember { mutableStateOf(true) }
+    var hour by rememberSaveable { mutableIntStateOf(7) }
+    var minute by rememberSaveable { mutableIntStateOf(0) }
+    var days by rememberSaveable { mutableIntStateOf(0) }
+    var snooze by rememberSaveable { mutableIntStateOf(10) }
+    var enabled by rememberSaveable { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
-    var showTimePicker by remember { mutableStateOf(false) }
-    var challengeType by remember { mutableIntStateOf(0) }
-    var maxSnoozes by remember { mutableIntStateOf(0) }
+    var showTimePicker by rememberSaveable { mutableStateOf(false) }
+    var challengeType by rememberSaveable { mutableIntStateOf(0) }
+    var maxSnoozes by rememberSaveable { mutableIntStateOf(0) }
     var ringtoneUri by remember { mutableStateOf<String?>(null) }
 
     val ringtonePicker = rememberLauncherForActivityResult(
@@ -109,6 +114,7 @@ fun AlarmEditScreen(
     }
 
     LaunchedEffect(alarmId) {
+        if (loaded) return@LaunchedEffect
         val existing = if (alarmId >= 0) app.memoryStore.getAlarm(alarmId) else null
         if (existing != null) {
             hour = existing.hour
@@ -226,10 +232,13 @@ fun AlarmEditScreen(
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 dayNames.forEachIndexed { index, label ->
                     val bit = (index + 1) % 7 // index 0 = Monday -> bit 1, index 6 = Sunday -> bit 0
                     FilterChip(
+                        modifier = Modifier.semantics {
+                            contentDescription = DayOfWeek.entries[index].getDisplayName(TextStyle.FULL, Locale.getDefault())
+                        },
                         selected = (days and (1 shl bit)) != 0,
                         onClick = { days = days xor (1 shl bit) },
                         label = { Text(label) }
@@ -266,7 +275,7 @@ fun AlarmEditScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = if (maxSnoozes == 0) {
-                        context.getString(R.string.challenge_none)
+                        context.getString(R.string.max_snoozes_unlimited)
                     } else {
                         maxSnoozes.toString()
                     },
@@ -334,7 +343,7 @@ fun AlarmEditScreen(
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(
                     0 to R.string.challenge_none,
                     1 to R.string.challenge_math,

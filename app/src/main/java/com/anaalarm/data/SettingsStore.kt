@@ -41,6 +41,7 @@ data class AppSettings(
      * wake-up screen, challenge dialog, home recap and settings previews. Parsed defensively
      * with [com.anaalarm.ui.avatar.Avatars.from] everywhere it is consumed.
      */
+    val memoryEnabled: Boolean = true,
     val avatar: String = com.anaalarm.ui.avatar.Avatars.DEFAULT
 )
 
@@ -94,6 +95,7 @@ class SettingsStore internal constructor(
         val TONE = stringPreferencesKey("tone")
         val VOICE_PITCH = floatPreferencesKey("voice_pitch")
         val VOICE_RATE = floatPreferencesKey("voice_rate")
+        val MEMORY_ENABLED = booleanPreferencesKey("memory_enabled")
         val AVATAR = stringPreferencesKey("avatar")
     }
 
@@ -111,6 +113,7 @@ class SettingsStore internal constructor(
             tone = p[Keys.TONE] ?: Tones.UPBEAT,
             voicePitch = p[Keys.VOICE_PITCH] ?: 1.05f,
             voiceRate = p[Keys.VOICE_RATE] ?: 1.0f,
+            memoryEnabled = p[Keys.MEMORY_ENABLED] ?: true,
             avatar = com.anaalarm.ui.avatar.Avatars.from(p[Keys.AVATAR])
         )
     }.flowOn(Dispatchers.IO)
@@ -128,7 +131,8 @@ class SettingsStore internal constructor(
         tone: String? = null,
         voicePitch: Float? = null,
         voiceRate: Float? = null,
-        avatar: String? = null
+        avatar: String? = null,
+        memoryEnabled: Boolean? = null
     ) {
         var writtenSecret: CachedSecret? = null
         dataStore.edit { p ->
@@ -154,7 +158,8 @@ class SettingsStore internal constructor(
             tone?.let { p[Keys.TONE] = it }
             voicePitch?.let { p[Keys.VOICE_PITCH] = it }
             voiceRate?.let { p[Keys.VOICE_RATE] = it }
-            avatar?.let { p[Keys.AVATAR] = it }
+            memoryEnabled?.let { p[Keys.MEMORY_ENABLED] = it }
+            avatar?.let { p[Keys.AVATAR] = com.anaalarm.ui.avatar.Avatars.from(it) }
         }
         writtenSecret?.let { cachedApiKey = it }
     }

@@ -157,6 +157,19 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `buddy updates when settings emit a new species`() = runTest {
+        val settings = MutableStateFlow(AppSettings(avatar = "cheetah"))
+        every { settingsStore.settings } returns settings
+        vm = HomeViewModel(memory, scheduler, settingsStore)
+        advanceUntilIdle()
+        assertEquals("cheetah", vm.buddy.value)
+
+        settings.value = AppSettings(avatar = "zebra")
+        advanceUntilIdle()
+        assertEquals("zebra", vm.buddy.value)
+    }
+
+    @Test
     fun `buddy mirrors the avatar setting`() = runTest {
         every { settingsStore.settings } returns flowOf(AppSettings(avatar = "zebra"))
         vm = HomeViewModel(memory, scheduler, settingsStore)
@@ -173,4 +186,15 @@ class HomeViewModelTest {
 
         assertEquals(com.anaalarm.ui.avatar.Avatars.DEFAULT, vm.buddy.value)
     }
+    @Test fun `recap refreshes when a completed session changes the daily log`() = runTest {
+        val logs = MutableStateFlow(emptyList<com.anaalarm.data.DailyLogEntity>())
+        every { memory.dailyLogs } returns logs
+        vm = HomeViewModel(memory, scheduler, settingsStore)
+        advanceUntilIdle()
+        coEvery { memory.todaySummary() } returns "A fresh recap"
+        logs.value = listOf(com.anaalarm.data.DailyLogEntity(date = "2026-10-09", summary = "A fresh recap"))
+        advanceUntilIdle()
+        assertEquals("A fresh recap", vm.recap.value)
+    }
+
 }

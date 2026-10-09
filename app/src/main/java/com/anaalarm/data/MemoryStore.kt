@@ -23,6 +23,29 @@ class MemoryStore(
     private val lastSessionId = AtomicLong(0L)
 
     val alarms: Flow<List<AlarmEntity>> = alarmDao.observeAll()
+    val companionMemories: Flow<List<CompanionMemoryEntity>> = db.companionMemoryDao().observeAll()
+    val dailyLogs: Flow<List<DailyLogEntity>> = dailyLogDao.observeAll()
+
+    suspend fun promptMemories(): List<CompanionMemoryEntity> = db.companionMemoryDao().promptMemories()
+
+    suspend fun remember(content: String, kind: String) {
+        val clean = content.trim().take(240)
+        if (clean.isBlank()) return
+        db.companionMemoryDao().insert(CompanionMemoryEntity(
+            content = clean,
+            normalized = clean.lowercase(java.util.Locale.ROOT).replace(Regex("\\s+"), " "),
+            kind = if (kind == "goal") "goal" else "fact"
+        ))
+    }
+
+    suspend fun editMemory(id: Long, content: String) {
+        require(content.isNotBlank())
+        db.companionMemoryDao().edit(id, content.trim().take(240), System.currentTimeMillis())
+    }
+
+    suspend fun forgetMemory(id: Long) = db.companionMemoryDao().forget(id)
+    suspend fun exportableMemories(): List<CompanionMemoryEntity> = db.companionMemoryDao().exportAll()
+    suspend fun restoreMemory(entry: CompanionMemoryEntity) = db.companionMemoryDao().insert(entry.copy(id = 0))
 
     suspend fun getAlarm(id: Long): AlarmEntity? = alarmDao.getById(id)
 
@@ -127,6 +150,16 @@ class MemoryStore(
                     summary = combined
                 )
             )
+        }
+    }
+
+    suspend fun replaceRecapEntry(original: String, recap: String, date: LocalDate = LocalDate.now()) {
+        dailyLogWriteMutex.withLock {
+            val existing = dailyLogDao.getByDate(date.toString()) ?: return@withLock
+            val index = existing.summary.lastIndexOf(original)
+            if (index >= 0) dailyLogDao.upsert(existing.copy(
+                summary = existing.summary.replaceRange(index, index + original.length, recap).takeLast(MAX_DAILY_LOG_CHARS)
+            ))
         }
     }
 

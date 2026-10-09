@@ -30,6 +30,9 @@ internal class SessionTurnPipeline(
         var turnInFlight: Boolean
         var everSpoken: Boolean
         var activeCoordinator: StreamingTurnCoordinator?
+        fun nextTurnGeneration(): Long
+        fun currentTurnGeneration(): Long
+        fun requestStop()
         fun streamingEnabled(): Boolean
         fun cancelListenCycle(stopRecognizer: Boolean)
         fun wrapUp()
@@ -50,31 +53,32 @@ internal class SessionTurnPipeline(
         host.voiceHint = null
         Log.i(TAG, "Received user speech len=${text.length}")
         if (SessionPhrases.isStopPhrase(text)) {
-            host.wrapUp()
+            host.requestStop()
             return
         }
         if (host.turnInFlight) return
         host.turnInFlight = true
         host.status = SessionStatus.THINKING
+        val generation = host.nextTurnGeneration()
         turnJob = scope.launch {
             try {
                 if (host.streamingEnabled()) {
-                    runStreamingTurn(text)
+                    runStreamingTurn(text, generation)
                 } else {
-                    runLegacyTurn(text)
+                    runLegacyTurn(text, generation)
                 }
             } catch (e: CancellationException) {
-                host.turnInFlight = false
+                if (generation == host.currentTurnGeneration()) host.turnInFlight = false
                 throw e
             } catch (e: Exception) {
-                host.turnInFlight = false
-                host.fail(e)
+                if (generation == host.currentTurnGeneration()) { host.turnInFlight = false; host.fail(e) }
             }
         }
     }
 
-    private suspend fun runLegacyTurn(text: String) {
+    private suspend fun runLegacyTurn(text: String, generation: Long) {
         val reply = conversationEngine.respond(text)
+        if (generation != host.currentTurnGeneration()) return
         host.turnInFlight = false
         if (!host.isTerminal()) host.speak(reply)
     }
@@ -84,26 +88,41 @@ internal class SessionTurnPipeline(
      * reopens only after the semantic terminal AND the final utterance completion, which is the
      * point where [StreamingTurnCoordinator.awaitSettled] returns.
      */
-    private suspend fun runStreamingTurn(text: String) {
+    private suspend fun runStreamingTurn(text: String, generation: Long) {
         val coordinator = StreamingTurnCoordinator(
             turnId = StreamingTurnCoordinator.nextTurnId(),
             ttsManager = app.ttsManager,
             onFirstPhraseAudioStarted = {
-                host.everSpoken = true
-                host.stopAlarmFallback()
+                if (generation == host.currentTurnGeneration() && !host.isTerminal()) {
+                    host.everSpoken = true
+                    host.status = SessionStatus.SPEAKING
+                    host.stopAlarmFallback()
+                }
             }
         )
         host.activeCoordinator = coordinator
         try {
-            val reply = conversationEngine.respondStreaming(text, coordinator::accept)
+            var accumulated = ""
+            val reply = conversationEngine.respondStreaming(text) { delta ->
+                if (generation == host.currentTurnGeneration() && !host.isTerminal()) {
+                    accumulated += delta
+                    host.aiText = accumulated
+                    coordinator.accept(delta)
+                }
+            }
+            if (generation != host.currentTurnGeneration()) return
             coordinator.markTerminalCompleted()
             host.aiText = reply
             host.turnInFlight = false
-            coordinator.awaitSettled()
+            if (!coordinator.awaitSettled()) {
+                coordinator.dispose()
+                throw ApiException("network error")
+            }
             if (!host.isTerminal()) host.afterSpeaking()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            if (generation != host.currentTurnGeneration()) return
             if (coordinator.canFallbackToNonStreaming()) {
                 // Nothing was audible yet, so a fresh non-streaming request cannot replay speech.
                 Log.w(TAG, "Streaming failed before first audio; falling back", e)
@@ -113,9 +132,7 @@ internal class SessionTurnPipeline(
                 if (!host.isTerminal()) host.speak(reply)
             } else {
                 // Some audio already played; an invisible retry would duplicate it.
-                coordinator.markTerminalFailed(
-                    e as? ApiException ?: ApiException(e.message ?: "ai error")
-                )
+                coordinator.markTerminalFailed(e as? ApiException ?: ApiException(e.message ?: "ai error"))
                 host.fail(coordinator.failure ?: e)
             }
         } finally {

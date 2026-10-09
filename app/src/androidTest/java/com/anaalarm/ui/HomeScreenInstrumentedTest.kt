@@ -12,6 +12,9 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -46,6 +49,7 @@ class HomeScreenInstrumentedTest {
     @get:Rule
     val compose = createEmptyComposeRule()
 
+    @get:Rule val testName = org.junit.rules.TestName()
     private var scenario: ActivityScenario<MainActivity>? = null
 
     @Before
@@ -56,6 +60,10 @@ class HomeScreenInstrumentedTest {
 
     @After
     fun tearDown() {
+        if (testName.methodName == "deleteAsksForConfirmationAndCancelKeepsTheAlarm") {
+            androidx.test.uiautomator.UiDevice.getInstance(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation())
+                .takeScreenshot(java.io.File(TestEnv.context.cacheDir, "companion-delete-dialog.png"))
+        }
         scenario?.close()
         scenario = null
         TestEnv.clearDatabase()
@@ -108,8 +116,9 @@ class HomeScreenInstrumentedTest {
         open()
         compose.awaitText("06:45")
 
+        compose.awaitText(str(R.string.next_alarm))
         compose.onAllNodes(isToggleable()).onFirst().assertIsOn()
-        compose.onAllNodes(isToggleable()).onFirst().performClick()
+        compose.onAllNodes(isToggleable()).onFirst().performScrollTo().assertIsDisplayed().performClick()
 
         assertTrue(
             "alarm stayed enabled in the database",
@@ -139,10 +148,13 @@ class HomeScreenInstrumentedTest {
         open()
         compose.awaitText("06:45")
 
-        compose.onNodeWithContentDescription(str(R.string.delete)).performClick()
+        compose.onNodeWithContentDescription(str(R.string.delete)).performScrollTo().assertIsDisplayed().performClick()
         compose.awaitText(str(R.string.cancel))
 
-        compose.onAllNodesWithText(str(R.string.cancel)).filterToOne(hasClickAction()).performClick()
+        compose.waitUntil(5_000) {
+            runCatching { compose.onNodeWithTag("cancel_alarm_delete").assertIsDisplayed(); true }.getOrDefault(false)
+        }
+        compose.onNodeWithTag("cancel_alarm_delete").assertIsDisplayed().performSemanticsAction(SemanticsActions.OnClick)
         compose.awaitTextGone(str(R.string.cancel))
 
         assertEquals(id, storedAlarm(id)?.id)
@@ -154,10 +166,10 @@ class HomeScreenInstrumentedTest {
         open()
         compose.awaitText("06:45")
 
-        compose.onNodeWithContentDescription(str(R.string.delete)).performClick()
+        compose.onNodeWithContentDescription(str(R.string.delete)).performScrollTo().assertIsDisplayed().performClick()
         compose.awaitText(str(R.string.cancel))
 
-        compose.onAllNodesWithText(str(R.string.delete)).filterToOne(hasClickAction()).performClick()
+        compose.onNodeWithTag("confirm_alarm_delete").assertIsDisplayed().performSemanticsAction(SemanticsActions.OnClick)
 
         assertTrue(
             "alarm was not deleted",

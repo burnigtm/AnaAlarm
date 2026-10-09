@@ -261,4 +261,25 @@ class StreamingTurnCoordinatorTest {
         done.join()
         assertEquals(6, speaker.calls.size)
     }
+    @Test fun `late audio start after interruption cannot report a speaking turn`() = runTest {
+        var starts = 0
+        val turn = coordinator(firstAudio = { starts++ })
+        turn.accept("Hello there. ")
+        turn.dispose()
+        speaker.startPhrase(1)
+        assertEquals(0, starts)
+    }
+
+    @Test fun `short streamed reply is spoken before the turn can settle`() = runTest {
+        val turn = coordinator()
+        turn.accept("Hi!")
+        assertTrue(speaker.calls.isEmpty())
+        turn.markTerminalCompleted()
+        assertEquals("Hi!", speaker.calls.single().text)
+        assertFalse(turn.awaitSettled(timeoutMillis = 50))
+        speaker.startPhrase(1)
+        speaker.completePhrase(1)
+        assertTrue(turn.awaitSettled(timeoutMillis = 100))
+    }
+
 }

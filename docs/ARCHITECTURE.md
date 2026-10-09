@@ -38,7 +38,7 @@ This document describes how AnaAlarm is structured, how the pieces fit together,
 | `SettingsStore.kt` | DataStore preferences (`anaalarm_settings`); `Flow<AppSettings>`, atomic updates, legacy-key migration |
 | `KeystoreSecretCipher.kt` | AES-GCM credential encryption backed by an app-private Android Keystore key |
 | `DataExport.kt` | Device-bound encrypted export/import of settings/logs/sessions/habits (never the API key) |
-| `MemoryStore.kt` | Alarms CRUD, session/message management, daily logs, usage, habits, retention pruning |
+| `MemoryStore.kt` | Alarms CRUD, session/message management, readable recaps, editable memories, usage, habits, retention pruning |
 
 ### `ai/` — the brain
 | File | Responsibility |
@@ -127,7 +127,7 @@ SessionController.start()
         └─ onDone ──► SessionListenCycle settle ──► LISTENING
         │
         ├── user speaks ──► SessionTurnPipeline.onUserSpeech(text)
-        │     ├─ stop phrase? ──► SessionDismissal.wrapUp()
+        │     ├─ stop phrase? ──► requestStop() ──► same challenge policy as Stop
         │     └─ else ──► legacy ConversationEngine.respond
         │                 OR streaming respondStreaming + StreamingTurnCoordinator
         │                   └─ speak / afterSpeaking ──► listen again
@@ -145,7 +145,7 @@ SessionController.start()
                  speak(farewell) ──► endSession()
                      ├─ activity finish (once)
                      └─ application-scope finalization
-                         ├─ save daily log (last 40 messages, 900 chars)
+                         ├─ save readable recap and optional fact/goal reflection
                          └─ delete raw session rows after success
 ```
 
@@ -164,23 +164,26 @@ alarms(id PK, hour, minute, days bitmask, snoozeMinutes, enabled,
        challengeType, maxSnoozes, ringtoneUri)
 messages(id PK, sessionId, role "user"|"assistant", content, timestamp)
 daily_logs(id PK, date "yyyy-MM-dd", summary)
+companion_memories(id PK, content, normalized UNIQUE, kind "fact"|"goal",
+                   inferred, deleted, updatedAt)
 usage(id PK, date, sessionId?, input/output/cached/total tokens, timestamp)
 session_records(id PK, startedAt, endedAt, durationMs, turns)
 habit_events(id PK, name, date, done)  -- unique (name, date)
 
 DataStore keys: api_key_encrypted, name, language, habits, interests,
                 session_minutes, snooze_minutes, pronouns, streaming_enabled,
-                tone, voice_pitch, voice_rate, avatar
+                tone, voice_pitch, voice_rate, avatar, memory_enabled
                 (+ legacy api_key cleared on migration)
 ```
 
 - `days` bitmask: bit 0 = Sunday … bit 6 = Saturday.
 - `sessionId` is a process-monotonic millisecond value; an atomic increment prevents overlapping
   sessions created in the same clock tick from sharing message rows.
-- Daily log: up to 900 characters of role-labelled session history, appended (not blank-replaced)
-  to today's bounded log. The most recent log before today is injected into the prompt.
+- Daily log: readable session recaps append to today's bounded log. Daily logs are not prompt
+  memory. Active companion facts/goals are read per turn when memory is enabled; edit, forget,
+  and disable controls are documented in [COMPANION_UPGRADE.md](COMPANION_UPGRADE.md).
 - Raw session messages are deleted after a successful daily log and startup-pruned after seven days.
-- Room **version 7** ships explicit migrations `1→2→…→7`, exported schemas (2–7), a
+- Room **version 8** ships explicit migrations `1→2→…→8`, exported schemas (2–8), a
   `(sessionId, timestamp)` history index, and a timestamp-only retention index.
 - `DataExport` encrypts with Keystore alias `anaalarm.export.v1` — restore works on the same
   device only.

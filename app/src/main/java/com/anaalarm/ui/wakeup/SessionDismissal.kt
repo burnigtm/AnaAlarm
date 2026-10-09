@@ -35,6 +35,9 @@ internal class SessionDismissal(
         var snoozeInFlight: Boolean
         var activeChallenge: StopChallengeUi?
         var everSpoken: Boolean
+        fun pauseForChallenge()
+        fun resumeAfterChallenge()
+        fun requestStop()
         fun stopChallengeType(): DismissalChallenges.Type
         fun cancelListenCycle(stopRecognizer: Boolean)
         fun cancelNetworkJobs()
@@ -62,13 +65,14 @@ internal class SessionDismissal(
      * explicit path bypasses the ended guard — the screen would otherwise be stuck open.
      */
     fun requestStop() {
-        if (host.isDisposed()) return
+        if (host.isDisposed() || host.activeChallenge != null) return
         if (host.isEnded() || host.isEnding() ||
             host.stopChallengeType() == DismissalChallenges.Type.NONE
         ) {
             stopNow()
             return
         }
+        host.pauseForChallenge()
         when (host.stopChallengeType()) {
             DismissalChallenges.Type.MATH -> {
                 host.activeChallenge = StopChallengeUi(
@@ -115,15 +119,19 @@ internal class SessionDismissal(
             }
             return false
         }
-        host.activeChallenge = null
-        memoryCode = null
-        stopNow()
+        // Keep the dialog visible for its success reaction before finishing.
+        host.stopAlarmFallback()
         return true
     }
 
+    fun completeChallengeStop() {
+        clearChallengeState()
+        stopNow()
+    }
+
     fun dismissChallenge() {
-        host.activeChallenge = null
-        memoryCode = null
+        clearChallengeState()
+        host.resumeAfterChallenge()
     }
 
     /** Display-only access for the memory challenge's visible-code phase. */
@@ -149,7 +157,7 @@ internal class SessionDismissal(
             host.snoozeInFlight = false
             snoozeJob = null
             if (result is AlarmScheduleResult.Scheduled) {
-                terminateSession(finishActivity = true)
+                terminateSession(finishActivity = true, snoozed = true)
             } else if (!host.isDisposed()) {
                 // Scheduling failure is recoverable. Keep the existing session (and its alarm
                 // fallback) active so the user can retry or explicitly stop it.
@@ -168,6 +176,10 @@ internal class SessionDismissal(
 
     fun wrapUp() {
         if (host.isEnded() || host.isEnding() || host.isDisposed()) return
+        if (host.stopChallengeType() != DismissalChallenges.Type.NONE) {
+            host.requestStop()
+            return
+        }
         host.markEnding()
         host.cancelListenCycle(stopRecognizer = true)
         host.status = SessionStatus.THINKING
@@ -210,8 +222,9 @@ internal class SessionDismissal(
         )
     }
 
-    fun terminateSession(finishActivity: Boolean) {
+    fun terminateSession(finishActivity: Boolean, snoozed: Boolean = false) {
         host.transitionToEnded()
+        if (!snoozed) runCatching { app.alarmScheduler.completeWakeSequence(alarmId) }
         // Explicit Stop/Snooze must silence the service even when the AI session already failed.
         host.stopAlarmFallback()
         if (finishActivity) host.onFinishedOnce()

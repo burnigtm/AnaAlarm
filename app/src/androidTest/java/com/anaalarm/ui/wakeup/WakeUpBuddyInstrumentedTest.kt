@@ -33,9 +33,8 @@ import org.junit.runner.RunWith
 
 /**
  * The animated wake-up buddy on the wake screen and inside the stop-challenge dialog: it must
- * appear immediately, mirror the stored species defensively, stay visible through failed and
- * ended sessions, and react inside the dismissal challenge without disturbing the
- * safety-critical Stop/Snooze controls.
+ * appear immediately, mirror the stored species, stay visible through failed and ended
+ * sessions, and remain in the challenge dialog next to Stop/Snooze.
  */
 @RunWith(AndroidJUnit4::class)
 @LargeTest
@@ -88,7 +87,8 @@ class WakeUpBuddyInstrumentedTest {
         compose.awaitText(str(R.string.no_api_key), timeoutMs = 40_000)
 
         compose.onNodeWithTag(WAKE_BUDDY_TEST_TAG).assertIsDisplayed()
-        compose.onNodeWithContentDescription(str(R.string.buddy_label)).assertIsDisplayed()
+        compose.onNodeWithContentDescription(str(R.string.buddy_label), substring = true)
+            .assertIsDisplayed()
     }
 
     @Test
@@ -130,7 +130,7 @@ class WakeUpBuddyInstrumentedTest {
         }
         launchSession(alarmId = 45L)
 
-        compose.awaitText(str(R.string.snooze_action), timeoutMs = 20_000)
+        compose.awaitText(TestEnv.context.getString(R.string.snooze_minutes_action, 10), timeoutMs = 20_000)
 
         compose.onNodeWithTag(WAKE_BUDDY_TEST_TAG).assertIsDisplayed()
         compose.onNodeWithTag(WAKE_SNOOZE_TEST_TAG).assertIsDisplayed()

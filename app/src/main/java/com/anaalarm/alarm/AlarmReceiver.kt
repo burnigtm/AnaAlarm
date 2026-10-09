@@ -45,12 +45,15 @@ class AlarmReceiver : BroadcastReceiver() {
         val app = context.applicationContext as? AnaAlarmApp ?: return
         val isSnooze = intent.getBooleanExtra(EXTRA_IS_SNOOZE, false)
         val directBoot = shouldUseDirectBootState(app.isUserUnlocked())
+        var schedulePrepared = false
+        if (isSnooze) runCatching { app.alarmScheduler.snoozeDelivered(alarmId) }
 
-        if (directBoot && shouldHandleRegularScheduleAfterFire(isSnooze)) {
+        if (shouldHandleRegularScheduleAfterFire(isSnooze)) {
             // Retire/re-arm before launching UI so a pre-unlock one-shot cannot be resurrected by
             // another reboot. This path reads only the device-protected minimal mirror.
             runCatching { app.alarmScheduler.handleDirectBootFiredAlarm(alarmId) }
                 .onSuccess {
+                    schedulePrepared = it != FiredAlarmResult.AlarmNotFound
                     Log.i(TAG, "Direct-boot post-fire alarmId=$alarmId result=$it")
                 }
                 .onFailure {
@@ -84,7 +87,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 check(app.ensureCredentialStorage()) {
                     "Credential storage unavailable for an unlocked alarm"
                 }
-                val result = app.alarmScheduler.handleFiredAlarm(alarmId)
+                val result = app.alarmScheduler.handleFiredAlarm(alarmId, prepared = schedulePrepared)
                 Log.i(TAG, "Alarm post-fire handling alarmId=$alarmId result=$result")
             } catch (error: Exception) {
                 Log.e(TAG, "Alarm post-fire handling failed alarmId=$alarmId", error)

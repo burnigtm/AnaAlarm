@@ -31,8 +31,12 @@ object DataExport {
         val tone: String,
         val voicePitch: Float,
         val voiceRate: Float,
-        /** Absent in pre-avatar exports; restore falls back to the default buddy. */
-        val avatar: String? = null
+        /**
+         * Absent in pre-buddy exports. Restore passes null through [SettingsStore.update],
+         * which leaves the buddy the user already picked unchanged.
+         */
+        val avatar: String? = null,
+        val memoryEnabled: Boolean? = null
     )
 
     @Serializable
@@ -50,6 +54,10 @@ object DataExport {
     data class ExportedHabit(val name: String, val date: String, val done: Boolean)
 
     @Serializable
+    data class ExportedMemory(val content: String, val normalized: String, val kind: String,
+        val inferred: Boolean, val deleted: Boolean, val updatedAt: Long)
+
+    @Serializable
     data class Payload(
         val format: String = FORMAT,
         val version: Int = VERSION,
@@ -57,7 +65,8 @@ object DataExport {
         val settings: ExportedSettings? = null,
         val dailyLogs: List<ExportedLog> = emptyList(),
         val sessions: List<ExportedSession> = emptyList(),
-        val habits: List<ExportedHabit> = emptyList()
+        val habits: List<ExportedHabit> = emptyList(),
+        val memories: List<ExportedMemory> = emptyList()
     )
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -78,7 +87,8 @@ object DataExport {
                 tone = settings.tone,
                 voicePitch = settings.voicePitch,
                 voiceRate = settings.voiceRate,
-                avatar = settings.avatar
+                avatar = settings.avatar,
+                memoryEnabled = settings.memoryEnabled
             ),
             dailyLogs = memory.exportableDailyLogs().map {
                 ExportedLog(date = it.date, summary = it.summary)
@@ -93,6 +103,9 @@ object DataExport {
             },
             habits = memory.recentHabitEvents(daysBack = 60).map {
                 ExportedHabit(name = it.name, date = it.date, done = it.done)
+            },
+            memories = memory.exportableMemories().map {
+                ExportedMemory(it.content, it.normalized, it.kind, it.inferred, it.deleted, it.updatedAt)
             }
         )
     }
@@ -126,7 +139,8 @@ object DataExport {
                 tone = s.tone,
                 voicePitch = s.voicePitch,
                 voiceRate = s.voiceRate,
-                avatar = s.avatar
+                avatar = s.avatar,
+                memoryEnabled = s.memoryEnabled
             )
             restored++
         }
@@ -152,6 +166,13 @@ object DataExport {
         payload.habits.forEach { habit ->
             runCatching {
                 memory.setHabitDone(habit.name, LocalDate.parse(habit.date), habit.done)
+                restored++
+            }
+        }
+        payload.memories.forEach { entry ->
+            if (entry.content.isNotBlank() && entry.content.length <= 240 && entry.kind in setOf("fact", "goal")) {
+                memory.restoreMemory(CompanionMemoryEntity(content = entry.content, normalized = entry.normalized,
+                    kind = entry.kind, inferred = entry.inferred, deleted = entry.deleted, updatedAt = entry.updatedAt))
                 restored++
             }
         }

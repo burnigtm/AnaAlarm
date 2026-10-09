@@ -66,6 +66,19 @@ class AnaDatabaseMigrationInstrumentedTest {
     private fun SupportSQLiteDatabase.scalar(query: String): String? =
         query(query).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
 
+    @Test
+    fun migrateSevenToEightPreservesAlarmsAndCreatesEditableMemory() {
+        helper.createDatabase(TEST_DATABASE, 7).apply {
+            execSQL("INSERT INTO alarms (id,hour,minute,days,snoozeMinutes,enabled,challengeType,maxSnoozes,ringtoneUri) VALUES (7,6,45,62,8,1,1,2,NULL)")
+            close()
+        }
+        val migrated = helper.runMigrationsAndValidate(TEST_DATABASE, 8, true, AnaDatabase.MIGRATION_7_8)
+        assertEquals("2", migrated.scalar("SELECT maxSnoozes FROM alarms WHERE id=7"))
+        migrated.execSQL("INSERT INTO companion_memories (content,normalized,kind,inferred,deleted,updatedAt) VALUES ('Likes hiking','likes hiking','fact',1,0,1)")
+        assertEquals("Likes hiking", migrated.scalar("SELECT content FROM companion_memories"))
+        assertTrue(migrated.hasIndex("index_companion_memories_normalized"))
+    }
+
     private fun SupportSQLiteDatabase.hasIndex(name: String): Boolean =
         query(
             "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?",

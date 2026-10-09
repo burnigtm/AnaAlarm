@@ -63,11 +63,8 @@ class ConversationEngineInstrumentedTest {
     }
 
     @Test
-    fun instructionsCarryThePersonaSettingsAndYesterdaysContext() = runBlocking {
-        TestEnv.app.memoryStore.saveDailyLog(
-            "user: I will call my mom",
-            LocalDate.now().minusDays(1)
-        )
+    fun instructionsCarryPersonaSettingsAndEditableMemories() = runBlocking {
+        TestEnv.app.memoryStore.remember("I will call my mom", "goal")
         server.enqueueReply("hello")
 
         engine.startSession(now = LocalDateTime.of(2026, 3, 10, 6, 45))
@@ -178,8 +175,8 @@ class ConversationEngineInstrumentedTest {
         engine.endSession()
 
         val summary = TestEnv.app.memoryStore.todaySummary()
-        assertTrue(summary.contains("assistant: sure"))
-        assertTrue(summary.contains("user: I will water the plants today"))
+        assertEquals("I will water the plants today", summary)
+        assertFalse(summary.contains("Please begin the wake-up greeting"))
         assertFalse(engine.sessionStarted)
     }
 
@@ -228,4 +225,18 @@ class ConversationEngineInstrumentedTest {
 
         assertEquals("earlier successful session", TestEnv.app.memoryStore.todaySummary())
     }
+    @Test
+    fun completedConversationCreatesSourceGroundedEditableMemory() = runBlocking {
+        server.enqueueReply("Good morning!")
+        engine.startSession()
+        server.enqueueReply("That sounds fun!")
+        engine.respond("I enjoy hiking on weekends")
+        server.enqueueReply("""{"recap":"You enjoy weekend hikes.","memories":[{"content":"Enjoys weekend hiking","kind":"fact","quote":"I enjoy hiking on weekends","confident":true}]}""")
+        engine.endSession()
+        val entry = TestEnv.app.memoryStore.promptMemories().single()
+        assertEquals("Enjoys weekend hiking", entry.content)
+        assertTrue(entry.inferred)
+        assertEquals("You enjoy weekend hikes.", TestEnv.app.memoryStore.todaySummary())
+    }
+
 }

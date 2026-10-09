@@ -53,10 +53,9 @@ class SettingsAvatarTest {
     }
 
     @Test
-    fun `corrupt stored species is repaired to the default on read`() = runTest {
+    fun `unknown species is sanitized to the default on write`() = runTest {
         val store = isolatedStore()
 
-        // update() writes raw values; the defensive parse happens when settings are read.
         store.update(avatar = "velociraptor")
         assertEquals(Avatars.DEFAULT, store.settings.first().avatar)
     }

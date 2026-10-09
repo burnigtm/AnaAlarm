@@ -52,6 +52,7 @@
     <string name="tone_drill">Drill sergeant</string>
 
     <string name="buddy_label">Wake-up buddy</string>
+    <string name="buddy_cd">%1$s, %2$s</string>
     <string name="buddy_desc">Your animal friend joins every morning interrogation</string>
     <string name="buddy_cheetah">Kiko the Cheetah</string>
     <string name="buddy_dino">Dax the Dino</string>
@@ -74,6 +75,7 @@
     <string name="submit">Submit</string>
     <string name="no_snoozes_left">No snoozes left for this alarm.</string>
     <string name="max_snoozes_label">Max snoozes (0 = unlimited)</string>
+    <string name="max_snoozes_unlimited">Unlimited</string>
     <string name="ringtone_label">Alarm sound</string>
     <string name="ringtone_pick">Choose sound</string>
     <string name="ringtone_default">System default</string>
@@ -145,4 +147,29 @@
     <string name="type_instead">Type instead</string>
     <string name="send">Send</string>
     <string name="no_api_key">No API key configured. Open AnaAlarm settings and add your DeepSeek API key.</string>
+    <string name="your_turn">Your turn</string>
+    <string name="input_voice">Voice</string>
+    <string name="input_type">Type</string>
+    <string name="repeat_reply">Repeat</string>
+    <string name="retry_conversation">Retry conversation</string>
+    <string name="buddy_greet">Greet your buddy</string>
+    <string name="snooze_remaining">%1$d snoozes remaining</string>
+    <string name="snooze_minutes_action">Snooze · %1$d min</string>
+    <string name="memory_title">What Ana remembers</string>
+    <string name="memory_enabled">Remember our conversations</string>
+    <string name="memory_explanation">Ana automatically saves explicit facts and goals. Review, edit, or forget them here. Turning this off stops saving and using conversation memory.</string>
+    <string name="memory_empty">No memories yet. Facts and goals from your conversations will appear here.</string>
+    <string name="memory_inferred">Inferred from conversation · review for accuracy</string>
+    <string name="memory_edited">Edited by you</string>
+    <string name="memory_fact">Fact</string>
+    <string name="memory_goal">Goal</string>
+    <string name="memory_edit">Edit memory</string>
+    <string name="memory_forget">Forget</string>
+    <string name="memory_content">Memory</string>
+    <string name="memory_failed">Could not save this change. Please try again.</string>
+    <string name="preview_voice">Preview voice</string>
+    <string name="preview_voice_text">Good morning! I am here to help you start your day.</string>
+    <string name="preview_voice_failed">Voice preview is unavailable on this device.</string>
+    <string name="preview_voice_stop">Stop preview</string>
+    <string name="conversation_unavailable">Conversation unavailable</string>
 </resources>

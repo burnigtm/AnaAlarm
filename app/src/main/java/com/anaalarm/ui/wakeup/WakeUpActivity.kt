@@ -91,7 +91,7 @@ class WakeUpActivity : ComponentActivity() {
         setContent {
             val controller = sessionViewModel.controller
             AnaAlarmTheme(darkTheme = true) {
-                controller?.let { WakeUpScreen(controller = it) }
+                controller?.let { androidx.compose.runtime.key(it) { WakeUpScreen(controller = it) } }
             }
         }
     }
@@ -115,8 +115,10 @@ class WakeUpActivity : ComponentActivity() {
                 DirectBootWakeUpScreen(
                     alarmId = alarmId,
                     snoozeMinutes = snoozeMinutes,
+                    snoozesRemaining = app.alarmScheduler.remainingSnoozes(alarmId),
                     onSnooze = { snoozeDirectBootAlarm(alarmId) },
                     onStop = {
+                        app.alarmScheduler.completeWakeSequence(alarmId)
                         AlarmService.stop(applicationContext, alarmId)
                         finish()
                     }

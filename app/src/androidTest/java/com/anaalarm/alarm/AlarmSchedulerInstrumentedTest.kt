@@ -148,6 +148,9 @@ class AlarmSchedulerInstrumentedTest {
         scheduler.reconcileUnlockedNow()
 
         assertEquals(false, TestEnv.app.memoryStore.getAlarm(id)?.enabled)
+        assertEquals(false, scheduler.directBootSnapshot(id)?.enabledForRearm)
+        assertEquals(14, scheduler.directBootSnoozeMinutes(id))
+        scheduler.completeWakeSequence(id)
         assertEquals(null, scheduler.directBootSnapshot(id))
     }
 
@@ -214,4 +217,51 @@ class AlarmSchedulerInstrumentedTest {
     private fun awaitNoPendingAlarmClock() {
         TestEnv.waitUntil(timeoutMs = 3_000) { nextTrigger() == null }
     }
+    @org.junit.Test
+    fun firedOneShotKeepsItsSnoozeCapAcrossUnlockReconciliation(): Unit = kotlinx.coroutines.runBlocking {
+        val app = TestEnv.app
+        val id = app.memoryStore.upsertAlarm(0, 7, 0, 0, 5, true, maxSnoozes = 1)
+        val alarm = app.memoryStore.getAlarm(id)!!
+        app.alarmScheduler.schedule(alarm)
+        app.alarmScheduler.handleFiredAlarm(id)
+        org.junit.Assert.assertFalse(app.memoryStore.getAlarm(id)!!.enabled)
+        org.junit.Assert.assertTrue(app.alarmScheduler.scheduleSnooze(id) is AlarmScheduleResult.Scheduled)
+        app.alarmScheduler.reconcileUnlockedNow()
+        org.junit.Assert.assertFalse(app.alarmScheduler.canSnooze(id))
+        org.junit.Assert.assertEquals(1, app.alarmScheduler.directBootSnapshot(id)!!.snoozeCount)
+        app.alarmScheduler.snoozeDelivered(id)
+        org.junit.Assert.assertFalse(app.alarmScheduler.canSnooze(id))
+        app.alarmScheduler.completeWakeSequence(id)
+        org.junit.Assert.assertEquals(null, app.alarmScheduler.directBootSnapshot(id))
+    }
+
+    @org.junit.Test
+    fun stoppingBeforeUnlockKeepsRetirementUntilRoomDisablesTheAlarm(): Unit = kotlinx.coroutines.runBlocking {
+        val app = TestEnv.app
+        val id = app.memoryStore.upsertAlarm(0, 7, 0, 0, 5, true, maxSnoozes = 1)
+        app.alarmScheduler.schedule(app.memoryStore.getAlarm(id)!!)
+        app.alarmScheduler.handleDirectBootFiredAlarm(id)
+        app.alarmScheduler.completeWakeSequence(id)
+        org.junit.Assert.assertTrue(app.memoryStore.getAlarm(id)!!.enabled)
+        org.junit.Assert.assertTrue(app.alarmScheduler.directBootSnapshot(id)!!.wakeSequenceComplete)
+        org.junit.Assert.assertTrue(app.alarmScheduler.rescheduleDirectBootNow().isEmpty())
+        app.alarmScheduler.reconcileUnlockedNow()
+        org.junit.Assert.assertFalse(app.memoryStore.getAlarm(id)!!.enabled)
+        org.junit.Assert.assertEquals(null, app.alarmScheduler.directBootSnapshot(id))
+    }
+
+    @org.junit.Test
+    fun acknowledgedRetirementDoesNotDisableAnAlarmTheUserReenabled(): Unit = kotlinx.coroutines.runBlocking {
+        val app = TestEnv.app
+        val id = app.memoryStore.upsertAlarm(0, 7, 0, 0, 5, true)
+        app.alarmScheduler.schedule(app.memoryStore.getAlarm(id)!!)
+        app.alarmScheduler.handleFiredAlarm(id)
+        org.junit.Assert.assertTrue(app.alarmScheduler.directBootSnapshot(id)!!.retirementAcknowledged)
+        // The UI persists this intent before its synchronous scheduler update.
+        app.memoryStore.setAlarmEnabled(id, true)
+        app.alarmScheduler.reconcileUnlockedNow()
+        org.junit.Assert.assertTrue(app.memoryStore.getAlarm(id)!!.enabled)
+        org.junit.Assert.assertTrue(app.alarmScheduler.directBootSnapshot(id)!!.enabledForRearm)
+    }
+
 }
