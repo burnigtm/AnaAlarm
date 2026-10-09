@@ -174,4 +174,35 @@ class DirectBootAlarmStoreTest {
     private companion object {
         const val TEST_PREFERENCES_NAME = "direct_boot_alarms_store_test"
     }
+
+    @Test fun `pending one shot snooze survives retirement reload and unlock reconciliation`() {
+        store.upsert(DirectBootAlarm(90L, 7, 0, 0, 10, maxSnoozes = 1))
+        store.retireOneShot(90L)
+        store.recordSnooze(90L, 123456789L)
+        val reopened = DirectBootAlarmStore(context, TEST_PREFERENCES_NAME)
+        reopened.replaceEnabled(emptyList())
+        assertEquals(123456789L, reopened.pendingSnoozes().single().pendingSnoozeAtMillis)
+        assertEquals(1, reopened.get(90L)!!.snoozeCount)
+        reopened.clearPendingSnooze(90L)
+        assertTrue(reopened.pendingSnoozes().isEmpty())
+        assertEquals(1, reopened.get(90L)!!.snoozeCount)
+    }
+
+    @Test fun `version two snapshots remain readable after snooze upgrade`() {
+        val decoded = DirectBootAlarmStore.decode("v2|9|6|15|0|4|retired|1|2|")!!
+        assertEquals(1, decoded.snoozeCount)
+        assertEquals(0L, decoded.pendingSnoozeAtMillis)
+        assertFalse(decoded.enabledForRearm)
+    }
+
+    @Test fun `stopping before unlock retains retirement until Room acknowledges it`() {
+        store.upsert(DirectBootAlarm(91L, 7, 0, 0, 10))
+        store.retireOneShot(91L)
+        store.finishWakeSequence(91L)
+        val reopened = DirectBootAlarmStore(context, TEST_PREFERENCES_NAME)
+        assertTrue(reopened.enabledAlarms().isEmpty())
+        assertTrue(reopened.get(91L)!!.wakeSequenceComplete)
+        reopened.acknowledgeRetirement(91L)
+        assertNull(reopened.get(91L))
+    }
 }

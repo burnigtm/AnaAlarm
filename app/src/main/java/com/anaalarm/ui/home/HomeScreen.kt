@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,6 +40,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -55,6 +57,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -126,10 +130,20 @@ fun HomeScreen(
             if (event == Lifecycle.Event.ON_RESUME) {
                 canExact = hasExactAlarmPermission()
                 canFullScreen = Notifications.canUseFullScreenIntent(context)
+                vm.refreshRecap()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(vm) {
+        vm.refreshRecap()
+        var date = LocalDate.now()
+        while (true) {
+            kotlinx.coroutines.delay(30_000L)
+            val current = LocalDate.now()
+            if (date != current) { date = current; vm.refreshRecap() }
+        }
     }
     var confirmDelete by remember { mutableStateOf<AlarmEntity?>(null) }
 
@@ -155,132 +169,145 @@ fun HomeScreen(
                 )
             )
         },
-        floatingActionButton = {
-            FloatingActionButton(onClick = onAddAlarm) {
-                Icon(Icons.Default.Add, contentDescription = context.getString(R.string.add_alarm))
+        bottomBar = {
+            Surface {
+                Button(
+                    onClick = onAddAlarm,
+                    modifier = Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)
+                        .fillMaxWidth().semantics { contentDescription = context.getString(R.string.add_alarm) }
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(context.getString(R.string.add_alarm))
+                }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) }
     ) { padding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
+                .padding(horizontal = 16.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 16.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text = context.getString(R.string.home_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            if (!canExact) {
-                PermissionWarningCard(
-                    message = context.getString(R.string.perm_alarm_denied),
-                    onRequest = onRequestAlarmPermission
+            item(key = "morning") {
+                Text(
+                    text = context.getString(R.string.home_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground
                 )
-                Spacer(Modifier.height(12.dp))
-            }
-            if (!canFullScreen) {
-                PermissionWarningCard(
-                    message = context.getString(R.string.perm_fullscreen_denied),
-                    onRequest = onRequestFullScreenPermission
-                )
-                Spacer(Modifier.height(12.dp))
-            }
-            if (shouldShowBatteryCard(context)) {
-                BatteryWarningCard(
-                    onOpenBatterySettings = { openBatterySettings(context) }
-                )
-                Spacer(Modifier.height(12.dp))
-            }
 
-            recap?.let { summary ->
-                RecapCard(
-                    buddy = buddy,
-                    summary = summary,
-                    habitNames = habitNames,
-                    habitsDone = habitsDone,
-                    streaks = streaks,
-                    onToggleHabit = { vm.toggleHabit(it) }
-                )
                 Spacer(Modifier.height(12.dp))
-            }
 
-            upcoming?.let { next ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                if (!canExact) {
+                    PermissionWarningCard(
+                        message = context.getString(R.string.perm_alarm_denied),
+                        onRequest = onRequestAlarmPermission
                     )
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = context.getString(R.string.next_alarm),
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                    Spacer(Modifier.height(12.dp))
+                }
+                if (!canFullScreen) {
+                    PermissionWarningCard(
+                        message = context.getString(R.string.perm_fullscreen_denied),
+                        onRequest = onRequestFullScreenPermission
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
+                if (shouldShowBatteryCard(context)) {
+                    BatteryWarningCard(
+                        onOpenBatterySettings = { openBatterySettings(context) }
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
+
+                if (recap != null || habitNames.isNotEmpty()) {
+                    val summary = recap.orEmpty()
+                    RecapCard(
+                        buddy = buddy,
+                        summary = summary,
+                        habitNames = habitNames,
+                        habitsDone = habitsDone,
+                        streaks = streaks,
+                        onToggleHabit = { vm.toggleHabit(it) }
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
+
+                upcoming?.let { next ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
                         )
-                        Spacer(Modifier.height(4.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = context.getString(R.string.next_alarm),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = formatUpcoming(context, next),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+
+                Button(
+                    onClick = {
+                        context.startActivity(Intent(context, WakeUpActivity::class.java))
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Notifications, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(8.dp))
+                    Text(context.getString(R.string.test_session))
+                }
+                Text(
+                    text = context.getString(R.string.test_session_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    text = context.getString(R.string.alarms),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(8.dp))
+
+            }
+            if (alarms.isEmpty()) {
+                item(key = "empty") {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
                         Text(
-                            text = formatUpcoming(context, next),
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            text = context.getString(R.string.no_alarm),
+                            modifier = Modifier.padding(16.dp),
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
-                }
-                Spacer(Modifier.height(12.dp))
-            }
-
-            Button(
-                onClick = {
-                    context.startActivity(Intent(context, WakeUpActivity::class.java))
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Default.Notifications, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.size(8.dp))
-                Text(context.getString(R.string.test_session))
-            }
-            Text(
-                text = context.getString(R.string.test_session_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(Modifier.height(20.dp))
-            Text(
-                text = context.getString(R.string.alarms),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(Modifier.height(8.dp))
-
-            if (alarms.isEmpty()) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    Text(
-                        text = context.getString(R.string.no_alarm),
-                        modifier = Modifier.padding(16.dp),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
                 }
             } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(alarms, key = { it.id }) { alarm ->
-                        AlarmCard(
-                            alarm = alarm,
-                            onClick = { onEditAlarm(alarm.id) },
-                            onToggle = { vm.toggleAlarm(alarm) },
-                            onDelete = { confirmDelete = alarm }
-                        )
-                    }
+                items(alarms, key = { it.id }) { alarm ->
+                    AlarmCard(
+                        alarm = alarm,
+                        onClick = { onEditAlarm(alarm.id) },
+                        onToggle = { vm.toggleAlarm(alarm) },
+                        onDelete = { confirmDelete = alarm }
+                    )
                 }
             }
         }
@@ -295,10 +322,10 @@ fun HomeScreen(
                 TextButton(onClick = {
                     vm.deleteAlarm(alarm)
                     confirmDelete = null
-                }) { Text(context.getString(R.string.delete)) }
+                }, modifier = Modifier.testTag("confirm_alarm_delete")) { Text(context.getString(R.string.delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmDelete = null }) {
+                TextButton(onClick = { confirmDelete = null }, modifier = Modifier.testTag("cancel_alarm_delete")) {
                     Text(context.getString(R.string.cancel))
                 }
             }
@@ -410,7 +437,10 @@ private fun RecapCard(
                 com.anaalarm.ui.avatar.AnimalAvatar(
                     species = buddy,
                     mood = com.anaalarm.ui.avatar.AvatarMood.NEUTRAL,
-                    contentDescription = context.getString(R.string.buddy_label),
+                    contentDescription = com.anaalarm.ui.avatar.buddyContentDescription(
+                        context,
+                        buddy
+                    ),
                     modifier = Modifier
                         .size(40.dp)
                         .testTag("home_recap_buddy")

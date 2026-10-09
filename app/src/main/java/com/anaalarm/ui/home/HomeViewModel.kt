@@ -68,7 +68,20 @@ class HomeViewModel(
     val buddy: StateFlow<String> = _buddy.asStateFlow()
 
     init {
+        // Settings outlive this screen: the Activity-scoped ViewModel stays alive while the
+        // user edits Settings, so we collect the flow instead of snapshotting once in init.
+        viewModelScope.launch {
+            settingsStore.settings.collect { stored ->
+                applyBuddyAndHabits(stored)
+            }
+        }
         refreshRecap()
+        viewModelScope.launch { memory.dailyLogs.collect { refreshRecap() } }
+    }
+
+    private fun applyBuddyAndHabits(stored: com.anaalarm.data.AppSettings) {
+        _habitNames.value = stored.habits
+        _buddy.value = com.anaalarm.ui.avatar.Avatars.from(stored.avatar)
     }
 
     /** Reloads the recap card's inputs; cheap local queries, no network involved. */
@@ -80,11 +93,9 @@ class HomeViewModel(
                 .filter { it.done }
                 .map { it.name }
                 .toSet()
-            // One settings read drives both the habit list and the buddy species.
             val stored = runCatching { settingsStore.settings.first() }.getOrNull()
-            val names = stored?.habits ?: emptyList()
-            _habitNames.value = names
-            _buddy.value = com.anaalarm.ui.avatar.Avatars.from(stored?.avatar)
+            if (stored != null) applyBuddyAndHabits(stored)
+            val names = _habitNames.value
             _streaks.value = runCatching {
                 memory.habitStreaks(names, today)
             }.getOrDefault(emptyMap())

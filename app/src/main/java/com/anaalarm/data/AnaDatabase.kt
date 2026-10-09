@@ -14,9 +14,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         DailyLogEntity::class,
         UsageEntity::class,
         SessionRecordEntity::class,
-        HabitEventEntity::class
+        HabitEventEntity::class,
+        CompanionMemoryEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 abstract class AnaDatabase : RoomDatabase() {
@@ -27,6 +28,7 @@ abstract class AnaDatabase : RoomDatabase() {
     abstract fun usageDao(): UsageDao
     abstract fun sessionRecordDao(): SessionRecordDao
     abstract fun habitEventDao(): HabitEventDao
+    abstract fun companionMemoryDao(): CompanionMemoryDao
 
     companion object {
         @Volatile
@@ -45,7 +47,8 @@ abstract class AnaDatabase : RoomDatabase() {
                         MIGRATION_3_4,
                         MIGRATION_4_5,
                         MIGRATION_5_6,
-                        MIGRATION_6_7
+                        MIGRATION_6_7,
+                        MIGRATION_7_8
                     )
                     .addCallback(rawMessageRetentionCallback())
                     .addCallback(usageRetentionCallback())
@@ -179,6 +182,19 @@ abstract class AnaDatabase : RoomDatabase() {
         }
 
         /** Prunes abandoned raw transcripts synchronously when Room opens for this process. */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `companion_memories` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `content` TEXT NOT NULL, `normalized` TEXT NOT NULL, `kind` TEXT NOT NULL,
+                        `inferred` INTEGER NOT NULL, `deleted` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_companion_memories_normalized` ON `companion_memories` (`normalized`)")
+            }
+        }
+
         internal fun rawMessageRetentionCallback(
             nowMillis: () -> Long = System::currentTimeMillis
         ): Callback = object : Callback() {

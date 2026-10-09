@@ -45,6 +45,25 @@ class DeepSeekClientInstrumentedTest {
         TestEnv.app.settingsStore.update(apiKey = key)
     }
 
+    @Test
+    fun streamingFromMainThreadReadsNetworkOffThreadAndDeliversDeltasOnMain(): Unit = runBlocking {
+        setApiKey("sk-stream")
+        server.enqueueStream("""data: {"type":"response.output_text.delta","delta":"Hello!","sequence_number":1}
+
+data: {"type":"response.completed","response":{"status":"completed"},"sequence_number":2}
+
+""")
+        val deltas = mutableListOf<String>()
+        val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+            client.streamRespond(instructions, input, onTextDelta = {
+                assertEquals(android.os.Looper.getMainLooper(), android.os.Looper.myLooper())
+                deltas += it
+            })
+        }
+        assertEquals("Hello!", result.text)
+        assertEquals(listOf("Hello!"), deltas)
+    }
+
     private fun expectFailure(block: suspend () -> Unit): ApiException = runBlocking {
         try {
             block()

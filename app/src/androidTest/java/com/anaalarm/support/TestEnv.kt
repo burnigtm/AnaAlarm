@@ -72,7 +72,8 @@ object TestEnv {
             tone = defaults.tone,
             voicePitch = defaults.voicePitch,
             voiceRate = defaults.voiceRate,
-            avatar = defaults.avatar
+            avatar = defaults.avatar,
+            memoryEnabled = defaults.memoryEnabled
         )
     }
 

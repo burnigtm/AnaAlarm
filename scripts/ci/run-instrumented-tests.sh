@@ -21,13 +21,13 @@ runner="androidx.test.runner.AndroidJUnitRunner"
 debug_apk="app/build/outputs/apk/debug/app-debug.apk"
 test_apk="app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
 
-# The four safety-critical classes currently declare exactly 34 tests and must skip none on either
+# The four safety-critical classes currently declare exactly 37 tests and must skip none on either
 # API 26 or API 36. Keeping this deterministic prevents an @Before assumption or accidental ignore
 # from turning the whole required suite into a green no-op.
 required_classes="com.anaalarm.alarm.AlarmSchedulerInstrumentedTest,com.anaalarm.alarm.BootReceiverInstrumentedTest,com.anaalarm.alarm.AlarmFiringInstrumentedTest,com.anaalarm.alarm.NotificationsInstrumentedTest"
-required_test_count=34
+required_test_count=37
 required_skip_count=0
-aggregate_test_count=191
+aggregate_test_count=204
 aggregate_skip_count=0
 
 set_required_appop() {

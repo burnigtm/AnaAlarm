@@ -118,4 +118,9 @@ class FakeAiServer {
     private fun enqueue(response: MockResponse) {
         server.enqueue(response)
     }
+
+    fun enqueueStream(events: String) {
+        enqueue(MockResponse().setHeader("Content-Type", "text/event-stream")
+            .setBody(events).throttleBody(16, 20, TimeUnit.MILLISECONDS))
+    }
 }

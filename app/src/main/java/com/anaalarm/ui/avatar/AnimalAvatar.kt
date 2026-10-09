@@ -10,6 +10,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.geometry.CornerRadius
@@ -47,12 +50,20 @@ fun AnimalAvatar(
 ) {
     val spec = remember(species) { avatarSpec(species) }
     val context = LocalContext.current
-    val animationsOff = remember {
-        Settings.Global.getFloat(
+    fun reducedMotion() = Settings.Global.getFloat(
             context.contentResolver,
             Settings.Global.ANIMATOR_DURATION_SCALE,
             1f
         ) == 0f
+    var animationsOff by remember { mutableStateOf(reducedMotion()) }
+    DisposableEffect(context) {
+        val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) { animationsOff = reducedMotion() }
+        }
+        context.contentResolver.registerContentObserver(
+            Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE), false, observer
+        )
+        onDispose { context.contentResolver.unregisterContentObserver(observer) }
     }
     // Instrumented tests (and users who turn off animator duration) must not host an infinite
     // Compose transition: it never goes idle, so waitUntil/awaitText stall after the first frame.

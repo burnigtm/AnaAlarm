@@ -53,7 +53,13 @@ internal class StreamingTurnCoordinator(
     }
 
     /** Informs the coordinator that the model stream reached response.completed normally. */
-    fun markTerminalCompleted() {
+    suspend fun markTerminalCompleted() {
+        synchronized(lock) { if (disposed || terminalSeen) return }
+        val tail = segmenter.flush()
+        if (tail.isNotBlank()) {
+            awaitOutstandingCapacity()
+            enqueue(tail)
+        }
         synchronized(lock) {
             terminalSeen = true
             settleIfIdleLocked()
@@ -144,6 +150,7 @@ internal class StreamingTurnCoordinator(
 
     private fun onPhraseStarted() {
         val announceFirst: Boolean = synchronized(lock) {
+            if (disposed) return
             val first = !firstAudioStarted
             firstAudioStarted = true
             first

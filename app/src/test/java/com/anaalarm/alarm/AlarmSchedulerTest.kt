@@ -255,4 +255,29 @@ class AlarmSchedulerTest {
     private companion object {
         const val TEST_DIRECT_BOOT_PREFERENCES = "alarm_scheduler_test"
     }
+
+    @Test fun `retired one shot enforces cap and pending snooze is rearmed after reboot`() {
+        every { alarmManager.canScheduleExactAlarms() } returns true
+        val alarm = AlarmEntity(id = 95, hour = 7, minute = 0, maxSnoozes = 1)
+        scheduler.schedule(alarm)
+        scheduler.handleDirectBootFiredAlarm(95)
+        assertTrue(scheduler.scheduleSnooze(alarm) is AlarmScheduleResult.Scheduled)
+        assertFalse(scheduler.canSnooze(95))
+        assertTrue(scheduler.rescheduleDirectBootNow().single() is AlarmScheduleResult.Scheduled)
+        scheduler.snoozeDelivered(95)
+        assertFalse(scheduler.canSnooze(95))
+        scheduler.completeWakeSequence(95)
+        assertTrue(scheduler.directBootSnapshot(95)!!.wakeSequenceComplete)
+        assertFalse(scheduler.directBootSnapshot(95)!!.enabledForRearm)
+    }
+
+    @Test fun `system alarm details intent targets MainActivity instead of wake session`() {
+        every { alarmManager.canScheduleExactAlarms() } returns true
+        val clock = slot<AlarmManager.AlarmClockInfo>()
+        every { alarmManager.setAlarmClock(capture(clock), any()) } returns Unit
+        scheduler.schedule(AlarmEntity(id = 96, hour = 7, minute = 0))
+        val intent = shadowOf(clock.captured.showIntent).savedIntent
+        assertEquals(com.anaalarm.MainActivity::class.java.name, intent.component!!.className)
+        assertEquals(96L, intent.getLongExtra(com.anaalarm.MainActivity.EXTRA_EDIT_ALARM_ID, -1L))
+    }
 }

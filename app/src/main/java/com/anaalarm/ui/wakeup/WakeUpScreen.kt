@@ -1,10 +1,18 @@
 package com.anaalarm.ui.wakeup
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.activity.compose.BackHandler
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +23,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -32,6 +48,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +66,7 @@ import com.anaalarm.R
 import com.anaalarm.ui.avatar.AnimalAvatar
 import com.anaalarm.ui.avatar.AvatarMood
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
@@ -71,14 +89,18 @@ internal fun avatarMood(status: SessionStatus, hasError: Boolean): AvatarMood =
     if (hasError) AvatarMood.SAD else avatarMoodFor(status)
 
 private fun avatarMood(controller: SessionController): AvatarMood =
-    avatarMood(controller.status, controller.errorText != null)
+    avatarMood(controller.status, controller.conversationFailed)
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WakeUpScreen(controller: SessionController) {
     val context = LocalContext.current
     var now by remember { mutableStateOf(LocalTime.now()) }
-    var typed by remember { mutableStateOf("") }
-    val actionAreaBottomPadding = if (controller.snoozeAvailable) 196.dp else 116.dp
+    var typed by rememberSaveable { mutableStateOf(controller.typedDraft) }
+    LaunchedEffect(typed) { controller.typedDraft = typed }
+    BackHandler { controller.requestStop() }
+    val density = LocalDensity.current
+    var actionAreaBottomPadding by remember { mutableStateOf(if (controller.snoozeAvailable) 224.dp else 116.dp) }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -91,18 +113,20 @@ fun WakeUpScreen(controller: SessionController) {
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .imePadding()
+            .statusBarsPadding()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(bottom = actionAreaBottomPadding)
                 .verticalScroll(rememberScrollState())
                 // Keep conversation/error content scrollable without allowing it to push the
                 // safety-critical alarm actions below the viewport.
                 .padding(
                     start = 24.dp,
                     top = 24.dp,
-                    end = 24.dp,
-                    bottom = actionAreaBottomPadding
+                    end = 24.dp
                 ),
             horizontalAlignment = Alignment.CenterHorizontally,
             // Keep state and error feedback in the initial viewport. SpaceBetween pushed the
@@ -117,29 +141,66 @@ fun WakeUpScreen(controller: SessionController) {
                     color = MaterialTheme.colorScheme.primary
                 )
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    text = now.format(DateTimeFormatter.ofPattern("HH:mm")),
-                    fontSize = 72.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
+                if (controller.conversationFailed) {
+                    ErrorFeedback(controller)
+                    Spacer(Modifier.height(12.dp))
+                }
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = now.format(DateTimeFormatter.ofPattern("HH:mm")),
+                        fontSize = (maxWidth.value / 3.2f / density.fontScale).coerceAtMost(72f).sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                }
                 Spacer(Modifier.height(16.dp))
-                StatusPill(controller.status)
+                StatusPill(controller.status, controller.conversationFailed)
             }
 
             // The wake-up buddy reacts live to every session state: sleepy while starting,
             // mouth flaps while Ana speaks, perked ears while listening, a thinking pose with
             // question bubble during model turns, and a celebration jump when the session ends.
+            val challengeOpen = controller.activeChallenge != null
             AnimalAvatar(
                 species = controller.buddy,
-                mood = avatarMood(controller),
-                contentDescription = context.getString(R.string.buddy_label),
+                mood = controller.buddyReaction ?: avatarMood(controller),
+                contentDescription = if (challengeOpen) {
+                    null
+                } else {
+                    com.anaalarm.ui.avatar.buddyContentDescription(context, controller.buddy)
+                },
                 modifier = Modifier
+                    .clickable(onClickLabel = context.getString(R.string.buddy_greet)) { controller.reactToTap() }
                     .size(112.dp)
                     .testTag(WAKE_BUDDY_TEST_TAG)
             )
 
             Column(modifier = Modifier.fillMaxWidth()) {
+                if (controller.canInterrupt) {
+                    Button(onClick = { controller.interrupt() }, modifier = Modifier.fillMaxWidth()) {
+                        Text(context.getString(R.string.your_turn))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                if (!controller.conversationFailed) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = !controller.textInputActive,
+                            enabled = controller.voiceAvailable && !controller.conversationFailed,
+                            onClick = { controller.setTextInput(false) },
+                            label = { Text(context.getString(R.string.input_voice)) }
+                        )
+                        FilterChip(
+                            selected = controller.textInputActive,
+                            enabled = !controller.conversationFailed,
+                            onClick = { controller.setTextInput(true) },
+                            label = { Text(context.getString(R.string.input_type)) }
+                        )
+                        TextButton(onClick = { controller.repeatReply() }, enabled = controller.canRepeat) {
+                            Text(context.getString(R.string.repeat_reply))
+                        }
+                    }
+                }
                 if (controller.aiText.isNotBlank()) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -178,16 +239,7 @@ fun WakeUpScreen(controller: SessionController) {
                     )
                 }
 
-                controller.errorText?.let { error ->
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        text = error,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+                if (!controller.conversationFailed) ErrorFeedback(controller)
 
                 controller.voiceHint?.let { hint ->
                     Spacer(Modifier.height(8.dp))
@@ -200,7 +252,7 @@ fun WakeUpScreen(controller: SessionController) {
                     )
                 }
 
-                if (controller.textInputActive) {
+                if (controller.textInputActive && !controller.conversationFailed) {
                     Spacer(Modifier.height(16.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
@@ -239,21 +291,29 @@ fun WakeUpScreen(controller: SessionController) {
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .onSizeChanged { actionAreaBottomPadding = with(density) { it.height.toDp() } + 16.dp }
+                .navigationBarsPadding()
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(start = 24.dp, top = 12.dp, end = 24.dp, bottom = 24.dp)
         ) {
             if (controller.snoozeAvailable) {
+                Text(
+                    text = controller.snoozesRemaining?.let {
+                        context.getString(R.string.snooze_remaining, it)
+                    } ?: context.getString(R.string.max_snoozes_unlimited),
+                    style = MaterialTheme.typography.labelMedium
+                )
                 OutlinedButton(
                     onClick = { controller.snoozeNow() },
-                    enabled = !controller.snoozeInFlight,
+                    enabled = !controller.snoozeInFlight && controller.snoozesRemaining != 0,
                     modifier = Modifier
                         .testTag(WAKE_SNOOZE_TEST_TAG)
                         .fillMaxWidth()
-                        .height(56.dp)
+                        .heightIn(min = 56.dp)
                 ) {
                     Text(
-                        text = context.getString(R.string.snooze_action),
+                        text = context.getString(R.string.snooze_minutes_action, controller.snoozeMinutes),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -269,7 +329,7 @@ fun WakeUpScreen(controller: SessionController) {
                 modifier = Modifier
                     .testTag(WAKE_STOP_TEST_TAG)
                     .fillMaxWidth()
-                    .height(64.dp)
+                    .heightIn(min = 64.dp)
             ) {
                 Text(
                     text = context.getString(R.string.stop),
@@ -291,21 +351,23 @@ private fun StopChallengeDialog(
     challenge: StopChallengeUi
 ) {
     val context = LocalContext.current
-    var typed by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    var typed by rememberSaveable { mutableStateOf("") }
     var wrongAttempt by remember { mutableStateOf(false) }
+    var finishing by remember { mutableStateOf(false) }
     // Brief buddy reactions: sad on a wrong answer, happy on success, attentive while
     // the memory code is visible, otherwise pondering alongside the user.
     var reaction by remember { mutableStateOf<AvatarMood?>(null) }
 
     LaunchedEffect(reaction) {
-        if (reaction != null) {
+        if (reaction == AvatarMood.SAD) {
             delay(1300)
             reaction = null
         }
     }
 
     AlertDialog(
-        onDismissRequest = { controller.dismissChallenge() },
+        onDismissRequest = { if (!finishing) controller.dismissChallenge() },
         title = { Text(context.getString(R.string.challenge_title)) },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -319,7 +381,10 @@ private fun StopChallengeDialog(
                     } else {
                         AvatarMood.THINKING
                     },
-                    contentDescription = context.getString(R.string.buddy_label),
+                    contentDescription = com.anaalarm.ui.avatar.buddyContentDescription(
+                        context,
+                        controller.buddy
+                    ),
                     modifier = Modifier
                         .size(72.dp)
                         .testTag(CHALLENGE_BUDDY_TEST_TAG)
@@ -398,10 +463,15 @@ private fun StopChallengeDialog(
                             typed = ""
                         } else {
                             reaction = AvatarMood.HAPPY
+                            finishing = true
+                            scope.launch {
+                                delay(750)
+                                controller.completeChallengeStop()
+                            }
                         }
                     }
                 },
-                enabled = challenge.showingCode || typed.isNotBlank()
+                enabled = !finishing && (challenge.showingCode || typed.isNotBlank())
             ) {
                 Text(
                     context.getString(
@@ -419,9 +489,28 @@ private fun StopChallengeDialog(
 }
 
 @Composable
-private fun StatusPill(status: SessionStatus) {
+private fun ErrorFeedback(controller: SessionController) {
     val context = LocalContext.current
-    val (label, color) = when (status) {
+    controller.errorText?.let { error ->
+        Text(
+            text = error,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite }
+        )
+    }
+    if (controller.retryAvailable) {
+        OutlinedButton(onClick = { controller.retry() }, modifier = Modifier.fillMaxWidth()) {
+            Text(context.getString(R.string.retry_conversation))
+        }
+    }
+}
+
+@Composable
+private fun StatusPill(status: SessionStatus, hasError: Boolean = false) {
+    val context = LocalContext.current
+    val (label, color) = if (hasError) context.getString(R.string.conversation_unavailable) to Color(0xFFF2B8B5) else when (status) {
         SessionStatus.STARTING -> context.getString(R.string.status_starting) to Color(0xFFFFC24D)
         SessionStatus.SPEAKING -> context.getString(R.string.status_speaking) to Color(0xFF7BD88F)
         SessionStatus.LISTENING -> context.getString(R.string.status_listening) to Color(0xFF6FB7FF)

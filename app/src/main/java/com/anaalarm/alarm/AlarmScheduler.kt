@@ -9,6 +9,7 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import com.anaalarm.AnaAlarmApp
+import com.anaalarm.MainActivity
 import com.anaalarm.data.AlarmEntity
 import com.anaalarm.ui.wakeup.WakeUpActivity
 import kotlinx.coroutines.Job
@@ -145,6 +146,17 @@ class AlarmScheduler(
                 AlarmScheduleResult.Failed.Reason.INVALID_ALARM
             )
         }
+        if (directBootStore.get(alarm.id) == null) {
+            try {
+                directBootStore.upsert(alarm.toDirectBootAlarm())
+                if (!alarm.enabled && alarm.days == 0) {
+                    directBootStore.retireOneShot(alarm.id)
+                    directBootStore.acknowledgeRetirement(alarm.id)
+                }
+            } catch (error: RuntimeException) {
+                return AlarmScheduleResult.Failed(AlarmScheduleResult.Failed.Reason.SYSTEM_ERROR, error)
+            }
+        }
         if (!canSnooze(alarm.id)) {
             return AlarmScheduleResult.Failed(
                 AlarmScheduleResult.Failed.Reason.SNOOZE_LIMIT_REACHED
@@ -160,8 +172,12 @@ class AlarmScheduler(
         // The counter lives in the device-protected mirror so caps survive reboots and are
         // enforced identically before and after first unlock.
         if (result is AlarmScheduleResult.Scheduled) {
-            runCatching { directBootStore.incrementSnoozeCount(alarm.id) }
-                .onFailure { Log.w(TAG, "Snooze counter update failed for ${alarm.id}", it) }
+            try {
+                checkNotNull(directBootStore.recordSnooze(alarm.id, result.triggerAtMillis))
+            } catch (error: RuntimeException) {
+                alarmManager.cancel(snoozePendingIntent(alarm.id))
+                return AlarmScheduleResult.Failed(AlarmScheduleResult.Failed.Reason.SYSTEM_ERROR, error)
+            }
         }
         return result
     }
@@ -193,8 +209,12 @@ class AlarmScheduler(
         val triggerAt = now.plusMinutes(alarm.snoozeMinutes.toLong())
         val result = registerExactAlarm(alarmId, triggerAt) { snoozePendingIntent(alarmId) }
         if (result is AlarmScheduleResult.Scheduled) {
-            runCatching { directBootStore.incrementSnoozeCount(alarmId) }
-                .onFailure { Log.w(TAG, "Snooze counter update failed for $alarmId", it) }
+            try {
+                checkNotNull(directBootStore.recordSnooze(alarmId, result.triggerAtMillis))
+            } catch (error: RuntimeException) {
+                alarmManager.cancel(snoozePendingIntent(alarmId))
+                return AlarmScheduleResult.Failed(AlarmScheduleResult.Failed.Reason.SYSTEM_ERROR, error)
+            }
         }
         return result
     }
@@ -203,6 +223,20 @@ class AlarmScheduler(
     fun canSnooze(alarmId: Long): Boolean {
         val snapshot = directBootStore.get(alarmId) ?: return true
         return snapshot.maxSnoozes <= 0 || snapshot.snoozeCount < snapshot.maxSnoozes
+    }
+
+    fun remainingSnoozes(alarmId: Long): Int? = directBootStore.get(alarmId)?.let {
+        if (it.maxSnoozes == 0) null else (it.maxSnoozes - it.snoozeCount).coerceAtLeast(0)
+    }
+
+    fun snoozeDelivered(alarmId: Long) = directBootStore.clearPendingSnooze(alarmId)
+
+    /** Audible speech does not finish a wake sequence; explicit dismissal does. */
+    fun completeWakeSequence(alarmId: Long) {
+        if (alarmId < 0L) return
+        alarmManager.cancel(snoozePendingIntent(alarmId))
+        directBootStore.finishWakeSequence(alarmId)
+        NextAlarmWidgetProvider.updateAll(context)
     }
 
     internal fun directBootSnoozeMinutes(alarmId: Long): Int? =
@@ -239,12 +273,15 @@ class AlarmScheduler(
         val app = context.applicationContext as AnaAlarmApp
         directBootStore.retiredOneShots().forEach { retired ->
             val alarm = app.memoryStore.getAlarm(retired.id)
-            if (alarm != null && alarm.days == 0 && alarm.enabled) {
+            val current = directBootStore.get(retired.id) ?: return@forEach
+            if (current.enabledForRearm) return@forEach
+            if (!current.retirementAcknowledged && alarm != null && alarm.days == 0 && alarm.enabled) {
                 app.memoryStore.setAlarmEnabled(retired.id, false)
             }
             // Remove only after the credential-side retirement succeeds. A crash or Room failure
             // leaves the tombstone available for the next USER_UNLOCKED/BOOT_COMPLETED pass.
-            directBootStore.remove(retired.id)
+            if (alarm == null) directBootStore.remove(retired.id)
+            else directBootStore.acknowledgeRetirement(retired.id)
         }
 
         val previouslyMirroredIds = directBootStore.enabledAlarms().mapTo(mutableSetOf()) { it.id }
@@ -258,25 +295,34 @@ class AlarmScheduler(
         // separate store. Cancel ids that disappeared from Room (or became invalid) so unlock
         // reconciliation is a true three-way reconciliation rather than a mirror-only cleanup.
         (previouslyMirroredIds - desiredIds).forEach(::cancelById)
-        return enabled.map { schedule(it) }
+        return enabled.map { schedule(it) } + reschedulePendingSnoozes()
     }
 
     /** Re-arms only device-protected enabled snapshots and never touches Room/DataStore. */
     fun rescheduleDirectBootNow(): List<AlarmScheduleResult> =
-        directBootStore.enabledAlarms().map(::scheduleDirectBoot)
+        directBootStore.enabledAlarms().map(::scheduleDirectBoot) + reschedulePendingSnoozes()
+
+    private fun reschedulePendingSnoozes(): List<AlarmScheduleResult> =
+        directBootStore.pendingSnoozes().map { alarm ->
+            // A snooze missed during reboot fires immediately after the device can schedule it.
+            val millis = maxOf(alarm.pendingSnoozeAtMillis, System.currentTimeMillis() + 1_000L)
+            val trigger = java.time.Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalDateTime()
+            registerExactAlarm(alarm.id, trigger) { snoozePendingIntent(alarm.id) }
+        }
 
     /**
      * Updates durable state after a delivered alarm. A zero repeat mask is a one-shot and is
      * disabled; repeating alarms are armed for their next selected weekday.
      */
-    suspend fun handleFiredAlarm(alarmId: Long): FiredAlarmResult {
+    suspend fun handleFiredAlarm(alarmId: Long, prepared: Boolean = false): FiredAlarmResult {
         val app = context.applicationContext as AnaAlarmApp
         val alarm = app.memoryStore.getAlarm(alarmId) ?: return FiredAlarmResult.AlarmNotFound
         // A fresh delivery starts a new snooze budget.
-        runCatching { directBootStore.resetSnoozeCount(alarmId) }
+        if (!prepared) runCatching { directBootStore.resetSnoozeCount(alarmId) }
         if (alarm.days == 0) {
             app.memoryStore.setAlarmEnabled(alarmId, false)
-            directBootStore.remove(alarmId)
+            if (!prepared) directBootStore.retireOneShot(alarmId)
+            directBootStore.acknowledgeRetirement(alarmId)
             // The user can tap Snooze while this receiver's async Room work is still running.
             // Do not erase that newly registered snooze PendingIntent here.
             cancelRegular(alarm)
@@ -393,10 +439,11 @@ class AlarmScheduler(
         }
     }
 
-    /** Shown in the status-bar "next alarm" affordance; tapping opens the wake-up screen. */
+    /** Inspecting a future alarm must never start its conversation. */
     private fun showIntent(alarmId: Long): PendingIntent {
-        val intent = Intent(context, WakeUpActivity::class.java)
-            .putExtra(AlarmReceiver.EXTRA_ALARM_ID, alarmId)
+        val intent = Intent(context, MainActivity::class.java)
+            .setAction(MainActivity.ACTION_SHOW_ALARM)
+            .putExtra(MainActivity.EXTRA_EDIT_ALARM_ID, alarmId)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val creatorOptions =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {

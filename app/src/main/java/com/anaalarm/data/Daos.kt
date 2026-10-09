@@ -8,6 +8,26 @@ import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
 @Dao
+interface CompanionMemoryDao {
+    @Query("SELECT * FROM companion_memories ORDER BY updatedAt DESC")
+    suspend fun exportAll(): List<CompanionMemoryEntity>
+    @Query("SELECT * FROM companion_memories WHERE deleted = 0 ORDER BY updatedAt DESC")
+    fun observeAll(): Flow<List<CompanionMemoryEntity>>
+
+    @Query("SELECT * FROM companion_memories WHERE deleted = 0 ORDER BY updatedAt DESC LIMIT 20")
+    suspend fun promptMemories(): List<CompanionMemoryEntity>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(memory: CompanionMemoryEntity): Long
+
+    @Query("UPDATE companion_memories SET content = :content, inferred = 0, updatedAt = :now WHERE id = :id AND deleted = 0")
+    suspend fun edit(id: Long, content: String, now: Long)
+
+    @Query("UPDATE companion_memories SET deleted = 1 WHERE id = :id")
+    suspend fun forget(id: Long)
+}
+
+@Dao
 interface AlarmDao {
     @Query("SELECT * FROM alarms ORDER BY hour ASC, minute ASC")
     fun observeAll(): Flow<List<AlarmEntity>>
@@ -48,6 +68,8 @@ interface MessageDao {
 
 @Dao
 interface DailyLogDao {
+    @Query("SELECT * FROM daily_logs ORDER BY date DESC")
+    fun observeAll(): Flow<List<DailyLogEntity>>
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(log: DailyLogEntity)
 

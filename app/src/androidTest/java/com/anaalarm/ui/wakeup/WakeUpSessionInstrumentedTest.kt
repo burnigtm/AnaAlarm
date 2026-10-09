@@ -27,6 +27,7 @@ import com.anaalarm.support.TestEnv
 import com.anaalarm.support.awaitText
 import com.anaalarm.support.awaitTextField
 import com.anaalarm.support.hasTextField
+import com.anaalarm.support.hasText
 import com.anaalarm.support.str
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -81,22 +82,22 @@ class WakeUpSessionInstrumentedTest {
 
     /** The controller only shows the text field once voice input is ruled out. */
     private fun switchToTyping() {
-        if (!compose.hasTextField()) {
-            // The greeting text can be visible while TTS is still finishing. Wait for the
-            // controller's LISTENING transition instead of racing the conditional fallback.
-            compose.awaitText(str(R.string.type_instead), timeoutMs = 40_000)
-            compose.onNodeWithText(str(R.string.type_instead))
-                .performScrollTo()
-                .assertIsDisplayed()
-                .performClick()
+        if (compose.hasText(str(R.string.your_turn))) {
+            compose.onNodeWithText(str(R.string.your_turn)).performScrollTo()
+                .performSemanticsAction(SemanticsActions.OnClick)
         }
+        compose.onNodeWithText(str(R.string.input_type)).performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
         compose.awaitTextField()
+        compose.waitUntil(20_000) {
+            compose.onAllNodes(androidx.compose.ui.test.hasSetTextAction().and(androidx.compose.ui.test.isEnabled())).fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     private fun say(text: String) {
         switchToTyping()
         compose.onNode(hasSetTextAction()).performTextReplacement(text)
-        compose.onNodeWithText(str(R.string.send)).performClick()
+        compose.onNodeWithText(str(R.string.send)).performSemanticsAction(SemanticsActions.OnClick)
     }
 
     @Test
@@ -116,8 +117,8 @@ class WakeUpSessionInstrumentedTest {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         scenario = ActivityScenario.launch(intent)
 
-        compose.awaitText(str(R.string.snooze_action))
-        compose.onNodeWithText(str(R.string.snooze_action)).assertIsDisplayed()
+        compose.awaitText(TestEnv.context.getString(R.string.snooze_minutes_action, 10))
+        compose.onNodeWithText(TestEnv.context.getString(R.string.snooze_minutes_action, 10)).assertIsDisplayed()
     }
 
     @Test
@@ -127,7 +128,7 @@ class WakeUpSessionInstrumentedTest {
         compose.awaitText(str(R.string.wake_up_title))
         compose.awaitText(str(R.string.no_api_key), timeoutMs = 40_000)
         compose.onNodeWithText(str(R.string.no_api_key)).assertIsDisplayed()
-        compose.onNodeWithText(str(R.string.status_ended)).assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.conversation_unavailable)).assertIsDisplayed()
     }
 
     @Test
@@ -172,22 +173,18 @@ class WakeUpSessionInstrumentedTest {
         say("I slept really well")
 
         compose.awaitText("Wonderful. What is your plan for today?", timeoutMs = 40_000)
-        compose.onNodeWithText("${str(R.string.you_said)}: I slept really well").assertIsDisplayed()
+        compose.onNodeWithText("${str(R.string.you_said)}: I slept really well").performScrollTo().assertIsDisplayed()
     }
 
     @Test
-    fun aStopPhraseAsksTheModelToWrapUp() {
+    fun aStopPhraseDismissesThroughTheSamePathAsTheStopButton() {
         server.respondAlwaysWith("Have a great day, time to get up!")
         startSessionWithApiKey()
         compose.awaitText("Have a great day, time to get up!", timeoutMs = 40_000)
-        server.takeRequest() // the greeting turn
-
         say("stop")
-
-        val wrapUpAsked = TestEnv.waitUntil(timeoutMs = 30_000) {
-            server.takeRequest(2_000)?.body?.readUtf8()?.contains("The wake-up session is over") == true
-        }
-        assertTrue("wrap-up prompt was never sent", wrapUpAsked)
+        assertTrue(TestEnv.waitUntil(timeoutMs = 15_000) {
+            runCatching { scenario?.state }.getOrNull() == Lifecycle.State.DESTROYED
+        })
     }
 
     @Test
@@ -222,15 +219,12 @@ class WakeUpSessionInstrumentedTest {
         startSessionWithApiKey()
 
         compose.awaitText(str(R.string.invalid_api_key), timeoutMs = 40_000)
-        compose.onNodeWithText(str(R.string.status_ended)).assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.conversation_unavailable)).assertIsDisplayed()
     }
 
     @Test
-    fun yesterdaysLogIsFedBackIntoTheMorningPrompt() = runBlocking {
-        TestEnv.app.memoryStore.saveDailyLog(
-            "user: I promised to call my mom",
-            java.time.LocalDate.now().minusDays(1)
-        )
+    fun editableMemoriesAreFedIntoTheMorningPrompt() = runBlocking {
+        TestEnv.app.memoryStore.remember("I promised to call my mom", "goal")
         server.respondAlwaysWith("Did you call your mom?")
         startSessionWithApiKey()
 

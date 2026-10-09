@@ -36,8 +36,12 @@ object AppLocales {
      */
     fun apply(languageCode: String, context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        if (isEffective(languageCode, context)) return
         val manager = context.getSystemService(LocaleManager::class.java) ?: return
+        val configured = manager.applicationLocales
+        val desired = Locale.forLanguageTag(tagFor(languageCode)).language
+        if (!configured.isEmpty) {
+            if (configured[0].language.equals(desired, ignoreCase = true)) return
+        } else if (isEffective(languageCode, context)) return
         runCatching {
             manager.applicationLocales = LocaleList.forLanguageTags(tagFor(languageCode))
         }

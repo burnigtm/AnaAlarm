@@ -100,7 +100,7 @@ class ConversationEngineTest {
 
         coEvery { memory.getSessionHistory(1001L, 40) } returns listOf(
             ChatMessage("assistant", "Hi!"),
-            ChatMessage("user", "stop"),
+            ChatMessage("user", "I will call mom today"),
             ChatMessage("assistant", "Bye!")
         )
 
@@ -108,7 +108,7 @@ class ConversationEngineTest {
 
         assertFalse(engine.sessionStarted)
         coVerifyOrder {
-            memory.appendDailyLog(match { it.contains("assistant: Hi!") && it.contains("Bye!") })
+            memory.appendDailyLog("I will call mom today")
             memory.clearSession(1001L)
         }
     }
@@ -388,5 +388,30 @@ class ConversationEngineTest {
             assertTrue(e.message!!.contains("Session not started"))
         }
     }
+    @Test
+    fun `retry resends failed turn without duplicating persisted user message`() = runTest {
+        coEvery { client.respond(any(), any()) } returns reply("Hi!")
+        engine.startSession(now)
+        coEvery { memory.getSessionHistory(1001L, 20) } returns emptyList()
+        coEvery { client.respond(any(), any()) } throws ApiException("network error")
+        try { engine.respond("I will call mom") } catch (_: ApiException) { }
+        coEvery { memory.getSessionHistory(1001L, 20) } returns listOf(ChatMessage("user", "I will call mom"))
+        coEvery { client.respond(any(), any()) } returns reply("Sounds good")
+        assertEquals("Sounds good", engine.respond("I will call mom"))
+        coVerify(exactly = 1) { memory.addMessage(1001L, "user", "I will call mom") }
+    }
+
+    @Test
+    fun `disabled memory neither loads memories nor extracts new ones`() = runTest {
+        every { settingsStore.settings } returns flowOf(AppSettings(memoryEnabled = false))
+        coEvery { client.respond(any(), any()) } returns reply("Hi!")
+        engine.startSession(now)
+        coEvery { memory.getSessionHistory(1001L, 40) } returns listOf(ChatMessage("user", "I like hiking"))
+        engine.endSession()
+        coVerify(exactly = 0) { memory.promptMemories() }
+        coVerify(exactly = 0) { client.reflect(any(), any()) }
+        coVerify { memory.appendDailyLog("I like hiking") }
+    }
+
 }
 

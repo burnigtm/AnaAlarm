@@ -40,12 +40,14 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -54,6 +56,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -70,33 +73,41 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false) {
+fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false, onMemories: () -> Unit = {}) {
     val context = LocalContext.current
     val app = context.applicationContext as AnaAlarmApp
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
 
-    var loaded by remember { mutableStateOf(false) }
+    var loaded by rememberSaveable { mutableStateOf(false) }
     val scroll = rememberScrollState()
-    var buddyY by remember { mutableIntStateOf(0) }
+    var buddyY by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(loaded, scrollToBuddy, buddyY) {
         if (loaded && scrollToBuddy && buddyY > 0) {
             scroll.scrollTo((buddyY - 16).coerceAtLeast(0))
         }
     }
-    var apiKey by remember { mutableStateOf("") }
-    var hasSavedKey by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf("") }
-    var language by remember { mutableStateOf("en") }
-    var habits by remember { mutableStateOf("") }
-    var interests by remember { mutableStateOf("") }
-    var sessionMinutes by remember { mutableIntStateOf(10) }
-    var pronouns by remember { mutableStateOf(com.anaalarm.data.Pronouns.NEUTRAL) }
-    var tone by remember { mutableStateOf(com.anaalarm.data.Tones.UPBEAT) }
-    var buddy by remember { mutableStateOf(Avatars.DEFAULT) }
-    var voicePitch by remember { mutableFloatStateOf(1.05f) }
-    var voiceRate by remember { mutableFloatStateOf(1.0f) }
-    var streamingEnabled by remember { mutableStateOf(false) }
+    val credentialDraft: SettingsCredentialDraft = androidx.lifecycle.viewmodel.compose.viewModel()
+    var apiKey by credentialDraft.key
+    fun leaveSettings() { apiKey = ""; onBack() }
+    var preview by remember { mutableStateOf<com.anaalarm.voice.TtsManager?>(null) }
+    var previewing by remember { mutableStateOf(false) }
+    var previewJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    DisposableEffect(Unit) {
+        onDispose { previewJob?.cancel(); preview?.shutdown() }
+    }
+    var hasSavedKey by rememberSaveable { mutableStateOf(false) }
+    var name by rememberSaveable { mutableStateOf("") }
+    var language by rememberSaveable { mutableStateOf("en") }
+    var habits by rememberSaveable { mutableStateOf("") }
+    var interests by rememberSaveable { mutableStateOf("") }
+    var sessionMinutes by rememberSaveable { mutableIntStateOf(10) }
+    var pronouns by rememberSaveable { mutableStateOf(com.anaalarm.data.Pronouns.NEUTRAL) }
+    var tone by rememberSaveable { mutableStateOf(com.anaalarm.data.Tones.UPBEAT) }
+    var buddy by rememberSaveable { mutableStateOf(Avatars.DEFAULT) }
+    var voicePitch by rememberSaveable { mutableFloatStateOf(1.05f) }
+    var voiceRate by rememberSaveable { mutableFloatStateOf(1.0f) }
+    var streamingEnabled by rememberSaveable { mutableStateOf(false) }
     var usageToday by remember {
         mutableStateOf<com.anaalarm.data.TokenUsageSummary?>(null)
     }
@@ -167,6 +178,7 @@ fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false) {
     }
 
     LaunchedEffect(Unit) {
+        if (loaded) return@LaunchedEffect
         val s = app.settingsStore.settings.first()
         // The stored credential is never echoed back into the text field. An empty field means
         // "keep the existing key"; typing replaces it; the remove action clears it explicitly.
@@ -198,7 +210,7 @@ fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false) {
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { leaveSettings() }) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = context.getString(R.string.back),
@@ -382,6 +394,41 @@ fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false) {
                 )
             }
 
+            OutlinedButton(
+                onClick = {
+                    if (previewing) {
+                        previewJob?.cancel()
+                        preview?.stop()
+                        previewing = false
+                    } else {
+                        previewing = true
+                        val manager = preview ?: com.anaalarm.voice.TtsManager(context).also { preview = it }
+                        previewJob = scope.launch {
+                            if (manager.awaitReady(5_000L)) {
+                                manager.setLanguage(language)
+                                manager.setPitch(voicePitch)
+                                manager.setSpeechRate(voiceRate)
+                                val previewContext = context.createConfigurationContext(
+                                    android.content.res.Configuration(context.resources.configuration).apply {
+                                        setLocale(if (language == "pt") java.util.Locale("pt", "BR") else java.util.Locale.US)
+                                    }
+                                )
+                                manager.speak(previewContext.getString(R.string.preview_voice_text), completion = { previewing = false })
+                            } else {
+                                previewing = false
+                                snackbar.showSnackbar(context.getString(R.string.preview_voice_failed))
+                            }
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(context.getString(if (previewing) R.string.preview_voice_stop else R.string.preview_voice))
+            }
+            OutlinedButton(onClick = onMemories, modifier = Modifier.fillMaxWidth()) {
+                Text(context.getString(R.string.memory_title))
+            }
+
             Spacer(Modifier.height(16.dp))
             SectionTitle(context.getString(R.string.habits_label))
             OutlinedTextField(
@@ -549,13 +596,8 @@ private fun formatCost(usd: Double): String =
     "$" + String.format(java.util.Locale.getDefault(), "%.4f", usd)
 
 /** Localized buddy display name. */
-private fun buddyName(context: Context, id: String): String = context.getString(
-    when (id) {
-        Avatars.DINO -> R.string.buddy_dino
-        Avatars.ZEBRA -> R.string.buddy_zebra
-        else -> R.string.buddy_cheetah
-    }
-)
+private fun buddyName(context: Context, id: String): String =
+    com.anaalarm.ui.avatar.avatarDisplayName(context, id)
 
 /**
  * Selectable buddy card with a live preview that cycles through a few moods so users can see
@@ -576,7 +618,7 @@ private fun BuddyCard(
         AvatarMood.THINKING,
         AvatarMood.HAPPY
     )
-    var moodIndex by remember { mutableIntStateOf(0) }
+    var moodIndex by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(speciesId) {
         // Stagger by position in ALL so the three cards animate out of phase.
         delay((Avatars.ALL.indexOf(speciesId) * 700L).coerceAtLeast(0L))
@@ -588,6 +630,7 @@ private fun BuddyCard(
 
     Card(
         modifier = modifier
+            .semantics(mergeDescendants = true) {}
             .testTag("buddy_card_$speciesId")
             // selectable() provides the canonical Selected semantics for accessibility and tests.
             .selectable(selected = selected, onClick = onClick),
@@ -629,4 +672,9 @@ private fun BuddyCard(
             }
         }
     }
+}
+
+/** Keeps an unsaved credential across rotation without putting it in a saved-state Bundle. */
+class SettingsCredentialDraft : androidx.lifecycle.ViewModel() {
+    val key = androidx.compose.runtime.mutableStateOf("")
 }

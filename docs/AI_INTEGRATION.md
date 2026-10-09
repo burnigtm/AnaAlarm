@@ -103,7 +103,7 @@ This is the morning wake-up session of <minutes> minutes. Rules:
 3. Ask what <name> plans to do today, and remember it.
 4. Gently remind about her habits: <habits>.
 5. Bring up her interests when it fits: <interests>.
-6. Context from a previous day: <most recent prior-day log>. Follow up on promises.
+6. Follow up on saved facts and goals when provided; verify old goals before assuming.
 7. Keep the conversation flowing for around <minutes> minutes, building energy.
 8. If the user says she is awake / stop / goodbye, answer with a short farewell.
 9. If the user says something unclear, steer back to waking up.
@@ -115,8 +115,8 @@ Design decisions baked into the prompt:
 - **Spoken output constraints** — short replies, no markdown. TTS can't render markdown, and long replies make the conversation drag.
 - **Language lock** — the model must not switch languages; enforced both by the instruction and by always sending the app's language.
 - **Time-boxed arc** — the AI knows the session length so it can pace quizzes across the conversation and build energy toward the end.
-- **Prior-day context** — the most recent non-empty log before today (from `daily_logs`) is
-  injected, even when the last completed session was more than one day ago.
+- **Editable context** — active facts and goals from `companion_memories` are loaded afresh for
+  each turn when memory is enabled. Daily recaps remain separate and are not injected.
 
 ## 5. Memory strategy
 
@@ -136,9 +136,13 @@ reply ──► MemoryStore.addMessage(sessionId, "assistant", reply)
 - **Session history:** Room `messages` table, limited to the last 20 messages per request. The
   synthetic greeting request is persisted too, so later requests reproduce the exact original
   prefix and remain eligible for automatic prefix caching.
-- **Long-term memory:** after each non-empty session, up to 900 characters of role-labelled raw
-  history are appended to a bounded `daily_logs` row keyed by date. A failed greeting cannot
-  blank-replace an earlier session. The next prompt injects the most recent previous-day log.
+- **Recaps:** each non-empty session appends a readable local recap to a bounded `daily_logs`
+  row. The synthetic greeting request is excluded. Optional reflection can improve that entry
+  without replacing another session's recap; offline or malformed responses preserve the local version.
+- **Editable memory:** with memory enabled, completed conversations with user responses make
+  one optional extraction request (12-second deadline, 512 output tokens, included in usage).
+  Facts/goals require confidence and an exact supporting user quote. Edited memories are retained;
+  forgetting stores a suppression marker. Disabling memory stops extraction and prompt inclusion.
 - **Profile memory:** name, habits, interests, language live in DataStore and are baked into the prompt.
 - **Retention:** after the daily log is successfully saved, transient message rows for that
   session are deleted. If log persistence fails or is cancelled, rows are retained so the only
@@ -152,11 +156,12 @@ DeepSeek charges discounted tokens for cached prefixes. Resending history hits t
 
 - `ConversationEngine.startSession()` creates the session (id = current ms), builds the prompt,
   persists a synthetic user greeting request, and sends that request to fetch the greeting.
-- `respond(userText)` appends the user turn and calls the API.
+- `respond(userText)` appends the user turn and calls the API. A pending accepted turn is reused
+  on retry or streaming fallback so failed requests do not duplicate rows or turn counts.
 - `wrapUp()` sends a special user message (`PromptBuilder.buildEndPrompt()`) asking for a short
   farewell.
-- `endSession()` resets session state, appends non-empty history to the daily log, and only then
-  removes transient message rows.
+- `endSession()` resets session state, persists the readable recap and optional reflection, and
+  only then removes transient message rows. See [COMPANION_UPGRADE.md](COMPANION_UPGRADE.md).
 
 ## 7. Failure modes
 
@@ -171,13 +176,12 @@ DeepSeek charges discounted tokens for cached prefixes. Resending history hits t
 | 429 / 5xx | Rate limit or server error | `ApiException("HTTP <status>")`, without retry |
 | 401 / 403 | Bad or revoked key | `ApiException("invalid api key")` |
 
-`SessionController` maps these stable client exceptions to localized recovery messages. Provider
-status text is not shown raw to the user.
+`SessionController` maps these stable client exceptions to localized recovery messages. Recoverable
+failures expose Retry while keeping the accepted turn available. Provider status text is not shown
+raw to the user; Stop and Snooze remain reachable.
 
 ## 8. Future enhancements
 
-- **Safe streaming speech** — implement the frame parser, sequence validation, Unicode phrase
-  segmenter, generation-scoped TTS queue, cancellation, fixtures, and feature-flag rollout
-  specified in [`RELIABILITY_AND_LATENCY.md`](RELIABILITY_AND_LATENCY.md#responses-streaming-and-phrase-level-tts-overlap).
+- **Continuous hands-free interruption** — current turn control is tap-to-interrupt; continuous
+  microphone interruption remains deferred.
 - **Web search tool** — the Responses API supports `web_search` server-side; could power "what's the weather today".
-- **Farewell memory** — persist a structured summary (planned tasks, promises) instead of raw message concatenation.

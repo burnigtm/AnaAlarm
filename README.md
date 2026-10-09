@@ -62,9 +62,12 @@ A ringtone trains you to develop a reflex: hear noise, hit snooze, stay asleep. 
 does not work that way. Answering questions out loud, doing arithmetic and recalling an earlier
 promise requires you to actually be awake, and by the time the session ends you are.
 
-The follow-up memory is the part that makes it feel personal rather than gimmicky. A bounded,
-role-labelled session transcript is appended to a daily log, and a later morning's system prompt
-includes the most recent prior-day log so Ana can carry a thread forward.
+The follow-up memory makes the conversation personal. Completed conversations produce a readable
+local recap and, when memory is enabled, automatically extracted facts and goals. You can inspect,
+edit, forget, or disable those memories in **Settings → What Ana remembers**.
+
+See [the companion upgrade guide](docs/COMPANION_UPGRADE.md) for interruption, replay, retry,
+voice previews, and the memory and alarm-state changes.
 
 <p align="center">
   <img src="docs/screenshots/home-morning.png" alt="Home recap with Kiko and weekday alarms" width="180">
@@ -96,11 +99,11 @@ A longer walkthrough with every major screen is in [docs/PRODUCT_TOUR.md](docs/P
 | Capability | Detail |
 |---|---|
 | Spoken conversation | Android TTS out, Android `SpeechRecognizer` in, alternating spoken turn-taking managed by `SessionController` |
-| Typing fallback | Appears automatically when there is no recognizer, the mic permission is missing, or two listening cycles pass in silence — and is always reachable via "Type instead" |
+| Input controls | Persistent Voice / Type selection, automatic typing fallback, Your turn to interrupt, Repeat to replay locally, and Retry for recoverable conversation failures |
 | Live clock | Large clock plus a colour-coded status pill: Starting / Speaking / Listening / Thinking / Ended |
 | Stop conditions | A stop phrase ("stop", "I'm up", "acordei", "pode parar", …), the session timer expiring, the Stop button, or an unrecoverable AI error; on AI error the independent alarm keeps ringing until Stop/Snooze |
 | Graceful failure | Missing key, rejected key, TLS interception and network loss each produce a specific, actionable on-screen message instead of a crash |
-| Memory | The last 20 message rows are re-sent with each request; up to 900 characters of raw role-labelled history are appended to the dated daily log at the end |
+| Memory | The last 20 conversation rows are re-sent per turn; readable recaps and separate editable facts/goals replace raw transcript memory. Extraction is optional and uses one additional bounded model request |
 
 ### Personalisation
 | Setting | What it changes |
@@ -139,7 +142,7 @@ A longer walkthrough with every major screen is in [docs/PRODUCT_TOUR.md](docs/P
           ├─ TTS warm-up ────────────────┐                           │
           ├─ ConversationEngine.startSession() (in parallel)         │
           │     ├─ PromptBuilder: persona + profile + date +         │
-          │     │                 most recent prior-day log          │
+          │     │                 editable facts and goals          │
           │     └─ POST https://api.deepseek.com/responses           │
           │                                                          │
           ├─ TtsManager.speak(reply) ─► audio start stops alarm      │
@@ -147,7 +150,8 @@ A longer walkthrough with every major screen is in [docs/PRODUCT_TOUR.md](docs/P
           ├─ SpeechListener.startListening(lang) ─► transcript ──────┘
           │
           └─ end ─► ConversationEngine.endSession()
-                       └─ MemoryStore.saveDailyLog(transcript) ──► Room
+                       ├─ readable daily recap ───────────────► Room
+                       └─ optional facts/goals reflection ────► editable memories
 ```
 
 Three details worth knowing:
@@ -526,8 +530,8 @@ Screenshot walkthrough: [docs/PRODUCT_TOUR.md](docs/PRODUCT_TOUR.md).
 6. If she cannot hear you twice in a row, or the device has no speech recognizer, a text box
    appears. Type your answer and press **Send** — the conversation continues identically. You can
    also switch to typing at any time with **Type instead**.
-7. When the session ends, a bounded role-labelled transcript is appended to today's log, and
-   tomorrow morning Ana can refer back to it. The home recap card shows that summary next to
+7. When the session ends, a readable recap is saved locally. With memory enabled, Ana extracts
+   explicit facts and goals for future conversations; you can edit or forget them in Settings. The home recap card shows that summary next to
    your buddy, with today's habits as a tappable checklist.
 
 ![Home recap card with Kiko, this morning's summary, and habit streaks](docs/screenshots/home-morning.png)
@@ -605,15 +609,15 @@ cannot verify (does the phone actually wake you up?), is in [docs/TESTING.md](do
   in Room (`anaalarm.db`); settings live in DataStore. App backup is disabled and both stores are
   explicitly excluded from cloud backup and device transfer.
 - **What leaves the device:** the system prompt (your name, habits, interests, the most recent
-  prior-day log) and the current conversation turns are sent to `api.deepseek.com` over HTTPS on
+  saved facts and goals) and the current conversation turns are sent to `api.deepseek.com` over HTTPS on
   each turn. Voice audio itself never reaches DeepSeek — transcription happens through Android's
   own speech recognizer, which may itself be a Google cloud service depending on the device.
 - **The API key** is encrypted with AES-GCM using an app-private Android Keystore key before its
   ciphertext is written to DataStore. Legacy plaintext values are migrated in place and removed.
   Logs report only whether a key is set and its length—never key characters.
-- **Raw transcript retention is bounded.** After a bounded role-labelled transcript is appended
-  to the daily log, its transient message rows are deleted. Abandoned/failed rows are pruned after
-  seven days; dated daily logs remain for follow-up context.
+- **Raw transcript retention is bounded.** After a readable recap is saved, transient message
+  rows are deleted. Abandoned/failed rows are pruned after seven days. Dated recaps stay local;
+  editable memories provide future conversation context when enabled.
 - **Uninstalling the app deletes all of it.** There is no cloud account and no sync.
 
 ## 15. Cost of running it

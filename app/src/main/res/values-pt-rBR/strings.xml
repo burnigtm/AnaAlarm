@@ -52,6 +52,7 @@
     <string name="tone_drill">Sargento</string>
 
     <string name="buddy_label">Companheiro de despertar</string>
+    <string name="buddy_cd">%1$s, %2$s</string>
     <string name="buddy_desc">Seu amigo animal participa de todos os interrogatórios matinais</string>
     <string name="buddy_cheetah">Kiko, o Guepardo</string>
     <string name="buddy_dino">Dax, o Dino</string>
@@ -74,6 +75,7 @@
     <string name="submit">Enviar</string>
     <string name="no_snoozes_left">As sonecas deste alarme acabaram.</string>
     <string name="max_snoozes_label">Máximo de sonecas (0 = ilimitado)</string>
+    <string name="max_snoozes_unlimited">Ilimitado</string>
     <string name="ringtone_label">Som do alarme</string>
     <string name="ringtone_pick">Escolher som</string>
     <string name="ringtone_default">Padrão do sistema</string>
@@ -145,4 +147,29 @@
     <string name="type_instead">Digitar</string>
     <string name="send">Enviar</string>
     <string name="no_api_key">Nenhuma chave de API configurada. Abra as Configurações do AnaAlarm e adicione sua chave da DeepSeek.</string>
+    <string name="your_turn">Sua vez</string>
+    <string name="input_voice">Voz</string>
+    <string name="input_type">Digitar</string>
+    <string name="repeat_reply">Repetir</string>
+    <string name="retry_conversation">Tentar conversa novamente</string>
+    <string name="buddy_greet">Cumprimentar seu companheiro</string>
+    <string name="snooze_remaining">%1$d sonecas restantes</string>
+    <string name="snooze_minutes_action">Soneca · %1$d min</string>
+    <string name="memory_title">O que Ana lembra</string>
+    <string name="memory_enabled">Lembrar das nossas conversas</string>
+    <string name="memory_explanation">Ana salva automaticamente fatos e objetivos explícitos. Revise, edite ou apague aqui. Desativar interrompe o salvamento e o uso da memória de conversas.</string>
+    <string name="memory_empty">Ainda não há memórias. Fatos e objetivos das suas conversas aparecerão aqui.</string>
+    <string name="memory_inferred">Inferido da conversa · revise a precisão</string>
+    <string name="memory_edited">Editado por você</string>
+    <string name="memory_fact">Fato</string>
+    <string name="memory_goal">Objetivo</string>
+    <string name="memory_edit">Editar memória</string>
+    <string name="memory_forget">Esquecer</string>
+    <string name="memory_content">Memória</string>
+    <string name="memory_failed">Não foi possível salvar a alteração. Tente novamente.</string>
+    <string name="preview_voice">Ouvir voz</string>
+    <string name="preview_voice_text">Bom dia! Estou aqui para ajudar você a começar o dia.</string>
+    <string name="preview_voice_failed">A prévia de voz não está disponível neste dispositivo.</string>
+    <string name="preview_voice_stop">Parar prévia</string>
+    <string name="conversation_unavailable">Conversa indisponível</string>
 </resources>
