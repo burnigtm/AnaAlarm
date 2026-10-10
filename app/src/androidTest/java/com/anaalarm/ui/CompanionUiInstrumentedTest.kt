@@ -40,6 +40,11 @@ class CompanionUiInstrumentedTest {
         scenario = ActivityScenario.launch(Intent(TestEnv.context, MainActivity::class.java)
             .putExtra(MainActivity.EXTRA_EDIT_ALARM_ID, id))
         compose.awaitText(str(R.string.edit_alarm))
+        // API 31 can expose semantics before the window finishes restoring orientation/insets.
+        compose.waitUntil(20_000) { compose.onNodeWithText(str(R.string.edit_alarm)).isDisplayed() }
+        compose.awaitText("08:20")
+        compose.onNodeWithText("08:20").performScrollTo()
+        compose.waitUntil(20_000) { compose.onNodeWithText("08:20").isDisplayed() }
         compose.onNodeWithText("08:20").assertIsDisplayed()
         compose.onAllNodesWithText(str(R.string.wake_up_title)).assertCountEquals(0)
     }
