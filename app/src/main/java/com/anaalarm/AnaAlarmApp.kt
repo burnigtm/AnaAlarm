@@ -79,6 +79,9 @@ class AnaAlarmApp : Application() {
     @Volatile
     private var credentialStorageReady = false
 
+    internal var sentinelHistory: com.anaalarm.sentinel.SentinelHistory? = null
+        private set
+
     override fun onCreate() {
         super.onCreate()
         Notifications.createChannel(this)
@@ -116,6 +119,10 @@ class AnaAlarmApp : Application() {
             val db = AnaDatabase.get(this)
             settingsStore = SettingsStore(this)
             memoryStore = MemoryStore(db, settingsStore)
+            sentinelHistory = com.anaalarm.sentinel.SentinelStore(
+                java.io.File(filesDir, "sentinel/events.json"), applicationScope
+            )
+            com.anaalarm.sentinel.SentinelEvents.recorder = sentinelHistory
             credentialStorageReady = true
             applicationScope.launch { settingsStore.migrateLegacyApiKey() }
         }

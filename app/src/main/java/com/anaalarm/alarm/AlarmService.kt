@@ -277,6 +277,8 @@ class AlarmService : Service() {
         runCatching { player.prepareAsync() }
             .onFailure { error ->
                 Log.e(TAG, "Async alarm preparation failed; keeping generated tone", error)
+                com.anaalarm.sentinel.SentinelEvents.record(com.anaalarm.sentinel.EventCode.ALARM_PLAYBACK_FAILED,
+                    com.anaalarm.sentinel.EventOutcome.FAILED)
                 ringtonePreparation.releaseIfOwned(preparationToken, player)
             }
     }
@@ -293,6 +295,8 @@ class AlarmService : Service() {
             handler.post(repeatTone)
         }.onFailure { error ->
             Log.e(TAG, "Generated alarm tone also failed", error)
+            com.anaalarm.sentinel.SentinelEvents.record(com.anaalarm.sentinel.EventCode.ALARM_PLAYBACK_FAILED,
+                com.anaalarm.sentinel.EventOutcome.FAILED)
             toneGenerator = null
         }
     }

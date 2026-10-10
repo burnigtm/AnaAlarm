@@ -85,8 +85,8 @@ run—not this configuration alone—is the execution evidence.
 Before the aggregate device suite, CI runs the alarm scheduler, boot receiver, notification, and
 end-to-end firing classes as a required group. That group must report exactly 37 tests and exactly
 zero skips on API 26, API 31, and API 36. CI then clears both app packages, restores and verifies the
-required capabilities, and executes the complete 230-test aggregate suite from clean app data.
-That phase must also run exactly 230 tests with zero skips on the fixed Google APIs images.
+required capabilities, and executes the complete 235-test aggregate suite from clean app data.
+That phase must also run exactly 235 tests with zero skips on the fixed Google APIs images.
 Unexpected assumptions/ignores, a missing exact-alarm grant, a missing full-screen grant, or a
 zero/partial runner invocation therefore fails closed. The locked-boot cases cancel only their
 regular PendingIntent, preserving the device-protected mirror and exercising the real API-26+

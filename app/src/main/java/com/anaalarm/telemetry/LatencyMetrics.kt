@@ -64,6 +64,7 @@ internal object LatencyMetrics {
             dimensions = dimensions.associate { (key, value) -> key to value.toString() }
         )
         Log.i(TAG, format(event))
+        com.anaalarm.sentinel.SentinelEvents.latency(event)
         scopedSink.get()?.emit(event)
     }
 

@@ -44,7 +44,7 @@ The APK check intentionally does not run on pull requests. PR code, including co
 must never receive the internal signing key. Do not configure `Installable APK` as a required PR
 check because its correct PR result is `skipped`.
 
-The workflow also has read-only repository permissions, fixed `ubuntu-24.04` runners, immutable
+The workflow defaults to read-only repository permissions (only publication has `contents: write`), fixed `ubuntu-24.04` runners, immutable
 full-SHA action pins, Gradle wrapper validation, strict dependency checksums and locks, and
 same-ref concurrency cancellation. If a newer commit reaches the same ref, GitHub may cancel the
 older run; only the newest completed `main` run is expected to publish an APK.
@@ -143,6 +143,28 @@ formula to a higher base; otherwise a reset run counter can produce APKs Android
 downgrades.
 
 ## Download and install an APK
+
+### Easiest: download directly on your phone
+
+1. Tap **[Download AnaAlarm Internal APK](https://github.com/burnigtm/AnaAlarm/releases/latest/download/AnaAlarm-internal.apk)**.
+2. Open the downloaded APK. If Android asks, enable **Allow from this source** for your browser
+   or file manager, then return to the installer.
+3. Tap **Install**, then open **AnaAlarm Internal**. Later downloads update this same installation
+   and retain its data, provided the signing key is unchanged.
+
+The link is available after the first approved publication. No GitHub login or ZIP extraction is
+needed for this public repository. The same link appears in app Settings.
+
+The **Publish phone download** job waits for the approved signed artifact. Only this job receives
+`contents: write`; it receives no signing secrets. It creates a draft release at the tested commit,
+uploads and downloads/verifies all three assets, then publishes it as latest. Tags are
+`internal-<run>.<attempt>`; stable asset names are `AnaAlarm-internal.apk`,
+`AnaAlarm-internal.apk.sha256`, and `build-info.txt`. Build metadata retains the original signed
+artifact filename for traceability; the release APK is a byte-identical copy with the stable name.
+Publication is serialized, retries reuse the release, and an older version cannot replace latest.
+These are normal GitHub releases labeled Internal so GitHub's latest-download link works.
+
+### Alternative: Actions artifacts
 
 These artifacts exist only on **GitHub Actions** (the CI mirror), not on Origin.
 
@@ -370,6 +392,8 @@ key can still impersonate the internal package, so rotate it promptly.
 ## Retention and limitations
 
 - GitHub retains each installable artifact for 30 days. Use the newest successful `main` run.
+- Published release assets remain available until a repository owner deletes them; Actions
+  artifact expiry does not expire the phone download link.
 - The unsigned intermediate is retained for seven days, so approve the signer within that window.
   If it expires first, rerun the workflow on `main` to regenerate the input. It is not installable
   and should not be distributed.

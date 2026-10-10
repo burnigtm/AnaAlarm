@@ -27,6 +27,7 @@ private sealed interface Screen {
     data object Settings : Screen
     data object Stats : Screen
     data object Memories : Screen
+    data object Sentinel : Screen
 }
 
 @Composable
@@ -37,12 +38,14 @@ fun AppRoot(requestedAlarmId: Long? = null) {
             Screen.Settings -> "settings"
             Screen.Stats -> "stats"
             Screen.Memories -> "memories"
+            Screen.Sentinel -> "sentinel"
             is Screen.AlarmEdit -> "alarm:${it.alarmId}"
         } },
         restore = { when (it) {
             "settings" -> Screen.Settings
             "stats" -> Screen.Stats
             "memories" -> Screen.Memories
+            "sentinel" -> Screen.Sentinel
             else -> if (it.startsWith("alarm:")) Screen.AlarmEdit(it.substringAfter(':').toLong()) else Screen.Home
         } }
     )
@@ -67,7 +70,7 @@ fun AppRoot(requestedAlarmId: Long? = null) {
         screen = Screen.Home
     }
     BackHandler(enabled = screen != Screen.Home) {
-        if (screen == Screen.Memories) screen = Screen.Settings else backToHome()
+        if (screen == Screen.Memories || screen == Screen.Sentinel) screen = Screen.Settings else backToHome()
     }
     stateHolder.SaveableStateProvider(routeKey(screen)) {
 
@@ -90,12 +93,14 @@ fun AppRoot(requestedAlarmId: Long? = null) {
             )
             is Screen.Settings -> SettingsScreen(
                 onBack = { backToHome() },
-                onMemories = { screen = Screen.Memories }
+                onMemories = { screen = Screen.Memories },
+                onSentinel = { screen = Screen.Sentinel }
             )
             is Screen.Stats -> StatsScreen(
                 onBack = { backToHome() }
             )
             is Screen.Memories -> com.anaalarm.ui.memory.MemoryScreen(onBack = { screen = Screen.Settings })
+            is Screen.Sentinel -> com.anaalarm.ui.sentinel.SentinelScreen(onBack = { screen = Screen.Settings })
         }
     }
 }
