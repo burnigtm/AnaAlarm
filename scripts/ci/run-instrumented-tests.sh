@@ -21,13 +21,13 @@ runner="androidx.test.runner.AndroidJUnitRunner"
 debug_apk="app/build/outputs/apk/debug/app-debug.apk"
 test_apk="app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
 
-# The four safety-critical classes currently declare exactly 37 tests and must skip none on either
-# API 26 or API 36. Keeping this deterministic prevents an @Before assumption or accidental ignore
+# The four safety-critical classes currently declare 37 tests and must skip none on either
+# API 26, 31, or 36. Keeping this deterministic prevents an @Before assumption or accidental ignore
 # from turning the whole required suite into a green no-op.
 required_classes="com.anaalarm.alarm.AlarmSchedulerInstrumentedTest,com.anaalarm.alarm.BootReceiverInstrumentedTest,com.anaalarm.alarm.AlarmFiringInstrumentedTest,com.anaalarm.alarm.NotificationsInstrumentedTest"
 required_test_count=37
 required_skip_count=0
-aggregate_test_count=204
+aggregate_test_count=$(wc -l < scripts/ci/instrumented-tests.txt)
 aggregate_skip_count=0
 
 set_required_appop() {
@@ -101,11 +101,14 @@ run_instrumentation() {
   local log_file="$3"
   local expected_count="$4"
   local expected_skips="$5"
-  local command=(adb shell am instrument -w -r -e debug false)
+  local command=(adb shell am instrument -w -r -e debug false -e listener com.anaalarm.support.TestEvidenceListener)
   if [[ -n "$filter" ]]; then
     command+=(-e class "$filter")
   fi
-  command+=("$test_id/$runner")
+  local discovery_log="${log_file%.log}-discovery.log"
+  "${command[@]}" -e log true "$test_id/$runner" > "$discovery_log"
+  python3 scripts/ci/check-instrumentation.py discovery "$discovery_log" --filter "$filter"
+  command+=(-e coverage true -e coverageFile /sdcard/Android/data/com.anaalarm/files/coverage.ec "$test_id/$runner")
 
   local instrument_status
   set +e
@@ -142,6 +145,9 @@ run_instrumentation() {
     fi
   fi
 
+  python3 scripts/ci/check-instrumentation.py results "$log_file" --filter "$filter"
+  adb pull /sdcard/Android/data/com.anaalarm/files/coverage.ec "${log_file%.log}.ec"
+  adb pull /sdcard/Android/data/com.anaalarm/files/test-evidence "$artifact_dir/test-evidence" || true
   echo "$label passed: $verdict."
 }
 
@@ -177,6 +183,17 @@ run_instrumentation \
 
 # Do not let the first phase's durable app data, tasks, services, or permission mutations influence
 # the aggregate phase. The complete CI image suite is also fail-closed on count and assumptions.
+reset_between_suites
+printf 'recognition_service=%s\ntts_default_synth=%s\n' \
+  "$(adb shell settings get secure voice_recognition_service | tr -d '\r')" \
+  "$(adb shell settings get secure tts_default_synth | tr -d '\r')" \
+  > "$artifact_dir/installed-voice-capabilities.txt"
+run_instrumentation \
+  "Installed-engine lifecycle smoke" \
+  "com.anaalarm.voice.SpeechListenerInstrumentedTest,com.anaalarm.voice.TtsManagerInstrumentedTest" \
+  "$artifact_dir/installed-voice-smoke.log" \
+  15 \
+  0
 reset_between_suites
 run_instrumentation \
   "Aggregate instrumented suite" \

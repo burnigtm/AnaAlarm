@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -173,9 +175,32 @@ fun WakeUpScreen(controller: SessionController) {
                     .clickable(onClickLabel = context.getString(R.string.buddy_greet)) { controller.reactToTap() }
                     .size(112.dp)
                     .testTag(WAKE_BUDDY_TEST_TAG)
+                    .semantics { stateDescription = com.anaalarm.ui.avatar.reactionDescription(context, controller.buddyReaction ?: avatarMood(controller)) }
             )
 
             Column(modifier = Modifier.fillMaxWidth()) {
+                if (controller.routineActive) {
+                    Text(controller.routineProgress, modifier = Modifier.testTag("routine_progress"))
+                    if (controller.routineHabit != null) {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { controller.advanceRoutine(true) }, enabled = controller.status == SessionStatus.LISTENING) {
+                                Text(context.getString(R.string.routine_complete))
+                            }
+                            TextButton(onClick = { controller.advanceRoutine(false) }, enabled = controller.status == SessionStatus.LISTENING) {
+                                Text(context.getString(R.string.routine_skip))
+                            }
+                        }
+                    }
+                }
+                if (controller.status == SessionStatus.LISTENING && !controller.textInputActive) {
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { controller.microphoneLevel },
+                        modifier = Modifier.fillMaxWidth().testTag("microphone_activity").semantics {
+                            contentDescription = context.getString(R.string.microphone_activity)
+                        }
+                    )
+                    Text(context.getString(R.string.voice_commands_hint), style = MaterialTheme.typography.bodySmall)
+                }
                 if (controller.canInterrupt) {
                     Button(onClick = { controller.interrupt() }, modifier = Modifier.fillMaxWidth()) {
                         Text(context.getString(R.string.your_turn))
@@ -367,13 +392,13 @@ private fun StopChallengeDialog(
     }
 
     AlertDialog(
-        onDismissRequest = { if (!finishing) controller.dismissChallenge() },
+        onDismissRequest = { if (!finishing && !controller.challengeSolved) controller.dismissChallenge() },
         title = { Text(context.getString(R.string.challenge_title)) },
         text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
                 AnimalAvatar(
                     species = controller.buddy,
-                    mood = reaction ?: if (
+                    mood = controller.buddyReaction ?: reaction ?: if (
                         challenge.showingCode &&
                         challenge.type == com.anaalarm.alarm.DismissalChallenges.Type.MEMORY
                     ) {
@@ -388,6 +413,7 @@ private fun StopChallengeDialog(
                     modifier = Modifier
                         .size(72.dp)
                         .testTag(CHALLENGE_BUDDY_TEST_TAG)
+                        .semantics { stateDescription = com.anaalarm.ui.avatar.reactionDescription(context, controller.buddyReaction ?: AvatarMood.THINKING) }
                 )
                 Spacer(Modifier.height(12.dp))
                 when {
@@ -426,6 +452,11 @@ private fun StopChallengeDialog(
                             )
                         }
                         Spacer(Modifier.height(12.dp))
+                        TextButton(onClick = { controller.startChallengeVoice() }, enabled = controller.voiceAvailable && !controller.challengeSolved) {
+                            Text(context.getString(R.string.challenge_voice))
+                        }
+                        if (controller.partialUserText.isNotBlank()) Text(controller.partialUserText)
+                        controller.voiceHint?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                         OutlinedTextField(
                             value = typed,
                             onValueChange = {
@@ -434,9 +465,10 @@ private fun StopChallengeDialog(
                             },
                             label = { Text(context.getString(R.string.challenge_answer_hint)) },
                             singleLine = true,
-                            isError = wrongAttempt,
+                            isError = wrongAttempt || controller.challengeWrong,
+                            enabled = !controller.challengeSolved,
                             supportingText = {
-                                if (wrongAttempt) {
+                                if (wrongAttempt || controller.challengeWrong) {
                                     Text(context.getString(R.string.challenge_wrong))
                                 }
                             },
@@ -464,14 +496,11 @@ private fun StopChallengeDialog(
                         } else {
                             reaction = AvatarMood.HAPPY
                             finishing = true
-                            scope.launch {
-                                delay(750)
-                                controller.completeChallengeStop()
-                            }
+
                         }
                     }
                 },
-                enabled = !finishing && (challenge.showingCode || typed.isNotBlank())
+                enabled = !finishing && !controller.challengeSolved && (challenge.showingCode || typed.isNotBlank())
             ) {
                 Text(
                     context.getString(
@@ -481,7 +510,7 @@ private fun StopChallengeDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = { controller.dismissChallenge() }) {
+            TextButton(onClick = { controller.dismissChallenge() }, enabled = !controller.challengeSolved) {
                 Text(context.getString(R.string.cancel))
             }
         }

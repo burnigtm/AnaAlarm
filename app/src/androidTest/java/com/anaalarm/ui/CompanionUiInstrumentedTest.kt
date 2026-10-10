@@ -76,9 +76,10 @@ class CompanionUiInstrumentedTest {
     @Test fun settingsDraftSurvivesVisitingMemoriesAndRecreation() {
         scenario = Screens.launchHome()
         compose.onNodeWithContentDescription(str(R.string.settings)).performClick()
-        compose.onNodeWithText(str(R.string.name_hint)).performScrollTo()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("settings_name").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("settings_name").performScrollTo()
         // The name field is identified by its existing label.
-        compose.onNode(hasSetTextAction() and hasText(str(R.string.name_hint))).performTextReplacement("Taylor")
+        compose.onNodeWithTag("settings_name").performTextReplacement("Taylor")
         compose.onNodeWithText(str(R.string.memory_title)).performScrollTo().performClick()
         compose.awaitText(str(R.string.memory_empty))
         scenario!!.onActivity { it.onBackPressedDispatcher.onBackPressed() }

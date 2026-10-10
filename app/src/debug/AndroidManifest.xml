@@ -2,6 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <application>
+        <service android:name=".debug.ScriptedRecognitionService" android:exported="true" tools:ignore="ForegroundServiceType"
+            android:permission="android.permission.BIND_SPEECH_RECOGNITION_SERVICE">
+            <intent-filter><action android:name="android.speech.RecognitionService" /></intent-filter>
+        </service>
+        <service android:name=".debug.ScriptedTtsService" android:exported="true" tools:ignore="ForegroundServiceType">
+            <intent-filter><action android:name="android.intent.action.TTS_SERVICE" /><category android:name="android.intent.category.DEFAULT" /></intent-filter>
+            <meta-data android:name="android.speech.tts" android:resource="@xml/scripted_tts_engine" />
+        </service>
         <!-- ADB/manual firing is intentionally available only in debug artifacts. -->
         <receiver
             android:name=".alarm.AlarmReceiver"

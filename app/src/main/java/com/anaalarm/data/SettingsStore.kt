@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "anaalarm_settings")
 
 data class AppSettings(
+    val sessionMode: String = SessionModes.CONVERSATION,
     val apiKey: String = "",
     val name: String = "",
     val language: String = "en",
@@ -44,6 +45,12 @@ data class AppSettings(
     val memoryEnabled: Boolean = true,
     val avatar: String = com.anaalarm.ui.avatar.Avatars.DEFAULT
 )
+
+object SessionModes {
+    const val CONVERSATION = "conversation"
+    const val ROUTINE = "routine"
+    fun from(value: String?): String = if (value == ROUTINE) ROUTINE else CONVERSATION
+}
 
 /** Selectable persona tones for the wake-up prompt. */
 object Tones {
@@ -84,6 +91,7 @@ class SettingsStore internal constructor(
     private object Keys {
         val API_KEY = stringPreferencesKey("api_key")
         val API_KEY_ENCRYPTED = stringPreferencesKey("api_key_encrypted")
+        val SESSION_MODE = stringPreferencesKey("session_mode")
         val NAME = stringPreferencesKey("name")
         val LANGUAGE = stringPreferencesKey("language")
         val HABITS = stringPreferencesKey("habits")
@@ -101,6 +109,7 @@ class SettingsStore internal constructor(
 
     val settings: Flow<AppSettings> = dataStore.data.map { p ->
         AppSettings(
+            sessionMode = SessionModes.from(p[Keys.SESSION_MODE]),
             apiKey = readApiKey(p),
             name = p[Keys.NAME] ?: "",
             language = p[Keys.LANGUAGE] ?: "en",
@@ -119,6 +128,7 @@ class SettingsStore internal constructor(
     }.flowOn(Dispatchers.IO)
 
     suspend fun update(
+        sessionMode: String? = null,
         apiKey: String? = null,
         name: String? = null,
         language: String? = null,
@@ -147,6 +157,7 @@ class SettingsStore internal constructor(
                 p.remove(Keys.API_KEY)
                 writtenSecret = CachedSecret(encrypted, legacy = null, plainText = sanitized)
             }
+            sessionMode?.let { p[Keys.SESSION_MODE] = SessionModes.from(it) }
             name?.let { p[Keys.NAME] = it.trim() }
             language?.let { p[Keys.LANGUAGE] = it }
             habits?.let { p[Keys.HABITS] = SettingsLists.join(it) }

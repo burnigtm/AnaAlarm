@@ -96,6 +96,19 @@ fun HomeScreen(
     val alarms by vm.alarms.collectAsState()
     val upcoming by vm.upcomingAlarm.collectAsState()
     val recap by vm.recap.collectAsState()
+    val priority by vm.priority.collectAsState()
+    var editingPriority by remember { mutableStateOf(false) }
+    var priorityDraft by remember { mutableStateOf("") }
+    if (editingPriority) AlertDialog(
+        onDismissRequest = { editingPriority = false },
+        title = { Text(context.getString(R.string.edit_priority)) },
+        text = { androidx.compose.material3.OutlinedTextField(
+            value = priorityDraft, onValueChange = { priorityDraft = it.take(500) },
+            label = { Text(context.getString(R.string.daily_priority)) }
+        ) },
+        confirmButton = { TextButton(onClick = { vm.savePriority(priorityDraft); editingPriority = false }, enabled = priorityDraft.isNotBlank()) { Text(context.getString(R.string.save)) } },
+        dismissButton = { TextButton(onClick = { editingPriority = false }) { Text(context.getString(R.string.cancel)) } }
+    )
     val habitNames by vm.habitNames.collectAsState()
     val habitsDone by vm.habitsDone.collectAsState()
     val streaks by vm.streaks.collectAsState()
@@ -105,6 +118,7 @@ fun HomeScreen(
     LaunchedEffect(vm) {
         vm.notices.collect { notice ->
             val message = when (notice) {
+                HomeNotice.PrioritySaveFailed -> context.getString(R.string.routine_save_failed)
                 is HomeNotice.ScheduleFailed -> when (notice.reason) {
                     AlarmScheduleResult.Failed.Reason.EXACT_ALARM_PERMISSION_REQUIRED ->
                         context.getString(R.string.perm_alarm_denied)
@@ -222,6 +236,18 @@ fun HomeScreen(
                     Spacer(Modifier.height(12.dp))
                 }
 
+                priority?.let { content ->
+                    Card(modifier = Modifier.fillMaxWidth().testTag("daily_priority"), onClick = {
+                        priorityDraft = content; editingPriority = true
+                    }) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(context.getString(R.string.daily_priority), style = MaterialTheme.typography.titleSmall)
+                            Text(content, style = MaterialTheme.typography.bodyLarge)
+                            Text(context.getString(R.string.edit_priority), style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
                 if (recap != null || habitNames.isNotEmpty()) {
                     val summary = recap.orEmpty()
                     RecapCard(

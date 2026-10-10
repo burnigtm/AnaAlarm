@@ -60,6 +60,7 @@ object TestEnv {
     fun resetSettings() = runBlocking {
         val defaults = AppSettings()
         app.settingsStore.update(
+            sessionMode = defaults.sessionMode,
             apiKey = defaults.apiKey,
             name = defaults.name,
             language = defaults.language,

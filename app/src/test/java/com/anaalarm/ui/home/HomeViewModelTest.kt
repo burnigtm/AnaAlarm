@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -29,6 +31,21 @@ import java.time.LocalDateTime
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
+    @Test fun `priority card refreshes across midnight while Home remains visible`() = runTest {
+        var date = java.time.LocalDate.parse("2026-10-10")
+        coEvery { memory.priority(date) } returns com.anaalarm.data.DailyPriorityEntity(date.toString(), "Today's plan", 1)
+        coEvery { memory.priority(date.plusDays(1)) } returns null
+        vm = HomeViewModel(memory, scheduler, settingsStore, today = { date })
+        val visible = backgroundScope.launch { vm.upcomingAlarm.collect {} }
+        runCurrent()
+        assertEquals("Today's plan", vm.priority.value)
+        date = date.plusDays(1)
+        advanceTimeBy(60_001)
+        runCurrent()
+        assertEquals(null, vm.priority.value)
+        visible.cancel(); runCurrent()
+        advanceTimeBy(5001); runCurrent()
+    }
 
     private val dispatcher = StandardTestDispatcher()
     private lateinit var memory: MemoryStore

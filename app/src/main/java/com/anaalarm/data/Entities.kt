@@ -4,6 +4,13 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
+@Entity(tableName = "daily_priorities")
+data class DailyPriorityEntity(
+    @PrimaryKey val date: String,
+    val content: String,
+    val updatedAt: Long
+)
+
 /** Inferred memories remain editable; deleted entries block identical automatic re-imports. */
 @Entity(tableName = "companion_memories", indices = [Index(value = ["normalized"], unique = true)])
 data class CompanionMemoryEntity(

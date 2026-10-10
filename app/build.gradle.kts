@@ -1,4 +1,5 @@
 plugins {
+    jacoco
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -41,6 +42,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            enableUnitTestCoverage = true
+            enableAndroidTestCoverage = true
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(
@@ -68,6 +73,8 @@ android {
         buildConfig = true
     }
 
+    testCoverage { jacocoVersion = "0.8.15" }
+
     testOptions {
         animationsDisabled = true
         unitTests {
@@ -77,6 +84,10 @@ android {
         // MockK inline mocking requires byte-buddy-agent self-attach, which JDK 21+ blocks by
         // default. Harmless on JDK 17 where CI runs.
         unitTests.all { test ->
+            test.extensions.configure<org.gradle.testing.jacoco.plugins.JacocoTaskExtension> {
+                isIncludeNoLocationClasses = true
+                excludes = listOf("jdk.internal.*")
+            }
             test.jvmArgs("-Djdk.attach.allowAttachSelf=true", "-XX:+EnableDynamicAgentLoading")
         }
     }
@@ -148,4 +159,54 @@ dependencies {
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     androidTestImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     // ui-test-manifest omitted: tests launch real Activities (MainActivity / WakeUpActivity).
+}
+
+// Merge unit and adb-driven device coverage against the original (uninstrumented) classes.
+jacoco { toolVersion = "0.8.15" }
+val coverageExclusions = listOf("**/R.class", "**/R$*.class", "**/BuildConfig.*", "**/*_Impl*", "com/anaalarm/debug/**")
+val originalClasses = files(
+    fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) { exclude(coverageExclusions) },
+    fileTree(layout.buildDirectory.dir("intermediates/javac/debug/compileDebugJavaWithJavac/classes")) { exclude(coverageExclusions) }
+)
+val coverageFiles = files(
+    fileTree(layout.buildDirectory.dir("outputs/unit_test_code_coverage")) { include("**/*.exec", "**/*.ec") },
+    fileTree(rootProject.layout.projectDirectory.dir("artifacts")) { include("**/*.ec") }
+)
+val voiceCoveragePatterns = listOf(
+    "com/anaalarm/voice/**",
+    "com/anaalarm/ui/avatar/**",
+    "com/anaalarm/ui/wakeup/SessionController*", "com/anaalarm/ui/wakeup/SessionListenCycle*",
+    "com/anaalarm/ui/wakeup/SessionTurnPipeline*", "com/anaalarm/ui/wakeup/SessionDismissal*",
+    "com/anaalarm/ui/wakeup/SessionPhrases*", "com/anaalarm/ui/wakeup/SessionTiming*",
+    "com/anaalarm/ui/wakeup/MorningRoutine*"
+)
+tasks.register<JacocoReport>("voiceCoverageReport") {
+    dependsOn("testDebugUnitTest")
+    classDirectories.setFrom(originalClasses.asFileTree.matching { include(voiceCoveragePatterns) })
+    sourceDirectories.setFrom(files("src/main/java"))
+    executionData.setFrom(coverageFiles)
+    reports { xml.required.set(true); html.required.set(true) }
+}
+tasks.register<JacocoReport>("appCoverageReport") {
+    dependsOn("testDebugUnitTest")
+    classDirectories.setFrom(originalClasses)
+    sourceDirectories.setFrom(files("src/main/java"))
+    executionData.setFrom(coverageFiles)
+    reports { xml.required.set(true); html.required.set(true) }
+}
+tasks.register<JacocoCoverageVerification>("verifyVoiceCoverage") {
+    dependsOn("voiceCoverageReport")
+    classDirectories.setFrom(originalClasses.asFileTree.matching { include(voiceCoveragePatterns) })
+    sourceDirectories.setFrom(files("src/main/java"))
+    executionData.setFrom(coverageFiles)
+    violationRules {
+        rule {
+            limit { counter = "LINE"; minimum = "0.90".toBigDecimal() }
+            limit { counter = "BRANCH"; minimum = "0.85".toBigDecimal() }
+        }
+    }
+    doFirst {
+        check(classDirectories.files.any { it.exists() }) { "No voice classes found for coverage verification" }
+        check(executionData.files.any { it.exists() }) { "No coverage measurements found" }
+    }
 }

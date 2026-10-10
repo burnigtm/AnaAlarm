@@ -47,6 +47,17 @@ if ! grep -Fq 'anaalarm-export' "$dex_strings"; then
   exit 1
 fi
 
+for marker in 'DailyPriorityExport' 'sessionMode'; do
+  if ! grep -Fq "$marker" "$dex_strings"; then
+    echo "Minified APK dex missing export descriptor $marker." >&2
+    exit 1
+  fi
+done
+if grep -Eq 'ScriptedRecognitionService|ScriptedTtsService' "$dex_strings"; then
+  echo "Scripted speech engines must be absent from minified production builds." >&2
+  exit 1
+fi
+
 if ! grep -Eq 'com\.anaalarm\.data\.DataExport' "$mapping_file"; then
   echo "R8 mapping does not mention DataExport — unexpected for kept serializers." >&2
   exit 1

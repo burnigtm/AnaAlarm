@@ -76,7 +76,7 @@ check. Origin pushes do not run them until the same commit is pushed to GitHub
 unit tests, compile Android tests, build debug and minified release APKs, and lint every variant.
 They also build the internal variant and rehearse the real packaging/verifier with a disposable
 one-day key, so pull requests test the distribution path without receiving the stable key.
-The device matrix boots API 26 and API 36 emulators and executes the complete instrumented suite
+The device matrix boots API 26, API 31, and API 36 emulators and executes the complete instrumented suite
 on each. API 36 also uses one-day disposable keys to sign, verify, install, and cold-launch both
 the minified production-shaped release APK and the exact `com.anaalarm.internal` variant. It
 checks both processes stay alive, then deletes the keys and signed APKs. A successful workflow
@@ -84,21 +84,21 @@ run—not this configuration alone—is the execution evidence.
 
 Before the aggregate device suite, CI runs the alarm scheduler, boot receiver, notification, and
 end-to-end firing classes as a required group. That group must report exactly 37 tests and exactly
-zero skips on both API 26 and API 36. CI then clears both app packages, restores and verifies the
-required capabilities, and executes the complete 204-test aggregate suite from clean app data.
-That phase must also run exactly 204 tests with zero skips on the fixed Google APIs images.
+zero skips on API 26, API 31, and API 36. CI then clears both app packages, restores and verifies the
+required capabilities, and executes the complete 230-test aggregate suite from clean app data.
+That phase must also run exactly 230 tests with zero skips on the fixed Google APIs images.
 Unexpected assumptions/ignores, a missing exact-alarm grant, a missing full-screen grant, or a
 zero/partial runner invocation therefore fails closed. The locked-boot cases cancel only their
 regular PendingIntent, preserving the device-protected mirror and exercising the real API-26+
 recovery path.
 
 ```text
-Host:   test + compile androidTest -> builds -> ephemeral packaging rehearsal -> lint --+
-API 26: required + aggregate instrumented suites --------------------------------------+--> Installable APK
-API 36: suites -> ephemeral release + exact internal install/launch --------------------+
+Host: test + compile androidTest -> builds -> packaging rehearsal -> lint -----+
+API 26/31: required + native-engine + aggregate suites ------------------------+--> Coverage gate --> Installable APK
+API 36: suites -> ephemeral release + exact internal install/launch -----------+
 ```
 
-`Installable APK` runs only after all three quality checks pass on a trusted `main` push or
+`Installable APK` runs only after host, device, and coverage checks pass on a trusted `main` push or
 manual-main run and the signing environment's approval gate is satisfied. Its fresh runner
 downloads the Host-built unsigned input and runs no Gradle or build task before the reviewed
 signing helper executes. It publishes a stable-key, minified
@@ -130,7 +130,7 @@ Real conversations are exercised over the real Retrofit/OkHttp/serialization sta
 Voice output and recognition still run against whatever the device provides. One negative-path
 test injects an unavailable-recognizer capability so the client-error contract is deterministic;
 it does not fake recognition results. Local or physical-device runs may use JUnit assumptions for
-genuinely absent TTS/recognizer hardware. CI deliberately uses fixed `google_apis` API 26 and API
+genuinely absent TTS/recognizer hardware. CI deliberately uses fixed `google_apis` API 26, 31, and
 36 images and rejects every skipped aggregate test, so a changed/missing engine is visible as a
 release-gate failure rather than a green no-op.
 
@@ -376,3 +376,22 @@ Conventions worth keeping:
 - **Use `Assume` only for genuinely optional hardware or an inapplicable platform version** (for
   example, a TTS engine or speech recognizer). Required alarm/full-screen app-ops must assert and
   fail closed; permission-denied behavior belongs in deterministic scheduler unit tests.
+
+
+## Voice companion coverage
+
+See [VOICE_COMPANION.md](VOICE_COMPANION.md) for the debug-only engine harness, local command
+vocabulary, spoken challenges, offline routines, and measurement boundaries. The reviewed test
+inventory is `scripts/ci/instrumented-tests.txt`; discovery and successful completion must match
+it, including the fully qualified JUnit annotations used by the alarm reconciliation tests.
+
+`ScriptedSpeechInstrumentedTest` exercises the real recognition and TTS bindings;
+`VoiceCompanionInstrumentedTest` follows spoken turns through UI, HTTP, playback, reactions,
+and persistence. `MorningPlanInstrumentedTest` checks priority dates, replacement, settings,
+and old/new encrypted backup compatibility. Existing installed-engine lifecycle tests remain
+available independently using the voice class filters.
+
+Run with `-Serial` and `-Coverage` to collect device measurements. Reports are under
+`app/build/reports/jacoco/{voiceCoverageReport,appCoverageReport}/`; `verifyVoiceCoverage`
+enforces 90% lines and 85% branches for the voice/session logic. Device results and failure
+screenshots are retained under `artifacts/device-api-<API>/<run>/`.

@@ -107,6 +107,27 @@ class MemoryStore(
     suspend fun pruneMessagesOlderThan(cutoffTimestamp: Long): Int =
         messageDao.deleteOlderThan(cutoffTimestamp)
 
+    val priorities = db.dailyPriorityDao().observeAll()
+
+    suspend fun priority(date: LocalDate = LocalDate.now()): DailyPriorityEntity? =
+        db.dailyPriorityDao().get(date.toString())
+
+    suspend fun savePriority(content: String, date: LocalDate = LocalDate.now()) {
+        val trimmed = content.trim().take(500)
+        if (trimmed.isNotEmpty()) db.dailyPriorityDao().upsert(
+            DailyPriorityEntity(date.toString(), trimmed, System.currentTimeMillis())
+        )
+    }
+
+    suspend fun exportablePriorities(): List<DailyPriorityEntity> = db.dailyPriorityDao().exportAll()
+
+    suspend fun restorePriority(priority: DailyPriorityEntity): Boolean {
+        val date = runCatching { LocalDate.parse(priority.date) }.getOrNull() ?: return false
+        if (priority.content.isBlank()) return false
+        db.dailyPriorityDao().upsert(priority.copy(date = date.toString(), content = priority.content.trim().take(500)))
+        return true
+    }
+
     suspend fun todaySummary(): String =
         dailyLogDao.getByDate(LocalDate.now().toString())?.summary ?: ""
 

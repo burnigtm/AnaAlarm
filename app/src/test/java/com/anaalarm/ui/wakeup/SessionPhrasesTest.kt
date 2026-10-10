@@ -64,4 +64,12 @@ class SessionPhrasesTest {
         assertTrue(SessionPhrases.isStopPhrase("já acordei"))
         assertTrue(SessionPhrases.isStopPhrase("pode parar agora"))
     }
+
+    @Test fun `embedded wake phrase fragments and unsupported symbols do not match`() {
+        assertFalse(SessionPhrases.isStopPhrase("xgoodbye"))
+        assertFalse(SessionPhrases.isStopPhrase("goodbyex"))
+        assertTrue(SessionPhrases.isStopPhrase("xgoodbye then goodbye Ana"))
+        assertFalse(SessionPhrases.isStopPhrase("🎶"))
+        assertTrue(SessionPhrases.isStopPhrase("…  STOP!!  "))
+    }
 }

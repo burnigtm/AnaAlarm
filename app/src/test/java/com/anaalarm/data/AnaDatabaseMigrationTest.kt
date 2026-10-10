@@ -52,7 +52,8 @@ class AnaDatabaseMigrationTest {
                 AnaDatabase.MIGRATION_4_5,
                 AnaDatabase.MIGRATION_5_6,
                 AnaDatabase.MIGRATION_6_7,
-                AnaDatabase.MIGRATION_7_8
+                AnaDatabase.MIGRATION_7_8,
+                AnaDatabase.MIGRATION_8_9
             )
             .allowMainThreadQueries()
             .build()

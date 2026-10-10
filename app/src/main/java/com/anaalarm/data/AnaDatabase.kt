@@ -15,13 +15,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         UsageEntity::class,
         SessionRecordEntity::class,
         HabitEventEntity::class,
-        CompanionMemoryEntity::class
+        CompanionMemoryEntity::class,
+        DailyPriorityEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 abstract class AnaDatabase : RoomDatabase() {
 
+    abstract fun dailyPriorityDao(): DailyPriorityDao
     abstract fun alarmDao(): AlarmDao
     abstract fun messageDao(): MessageDao
     abstract fun dailyLogDao(): DailyLogDao
@@ -48,7 +50,8 @@ abstract class AnaDatabase : RoomDatabase() {
                         MIGRATION_4_5,
                         MIGRATION_5_6,
                         MIGRATION_6_7,
-                        MIGRATION_7_8
+                        MIGRATION_7_8,
+                        MIGRATION_8_9
                     )
                     .addCallback(rawMessageRetentionCallback())
                     .addCallback(usageRetentionCallback())
@@ -192,6 +195,12 @@ abstract class AnaDatabase : RoomDatabase() {
                     )
                 """.trimIndent())
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_companion_memories_normalized` ON `companion_memories` (`normalized`)")
+            }
+        }
+
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `daily_priorities` (`date` TEXT NOT NULL, `content` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`date`))")
             }
         }
 

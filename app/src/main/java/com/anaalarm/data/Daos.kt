@@ -8,6 +8,18 @@ import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
 @Dao
+interface DailyPriorityDao {
+    @Query("SELECT * FROM daily_priorities WHERE date = :date")
+    suspend fun get(date: String): DailyPriorityEntity?
+    @Query("SELECT * FROM daily_priorities ORDER BY date")
+    fun observeAll(): Flow<List<DailyPriorityEntity>>
+    @Query("SELECT * FROM daily_priorities ORDER BY date")
+    suspend fun exportAll(): List<DailyPriorityEntity>
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(priority: DailyPriorityEntity)
+}
+
+@Dao
 interface CompanionMemoryDao {
     @Query("SELECT * FROM companion_memories ORDER BY updatedAt DESC")
     suspend fun exportAll(): List<CompanionMemoryEntity>

@@ -7,6 +7,8 @@ export ARTIFACT_DIR="$repo_root/artifacts/device-api-$api_level"
 mkdir -p "$ARTIFACT_DIR"
 
 capture_diagnostics() {
+  adb pull /sdcard/Android/data/com.anaalarm/files/coverage.ec "$ARTIFACT_DIR/final-coverage.ec" >/dev/null 2>&1 || true
+  adb pull /sdcard/Android/data/com.anaalarm/files/test-evidence "$ARTIFACT_DIR/test-evidence" >/dev/null 2>&1 || true
   adb logcat -d -v threadtime > "$ARTIFACT_DIR/logcat.txt" 2>&1 || true
   adb shell dumpsys activity activities > "$ARTIFACT_DIR/activities.txt" 2>&1 || true
 }
