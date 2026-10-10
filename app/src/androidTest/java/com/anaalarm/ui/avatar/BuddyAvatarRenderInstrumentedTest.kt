@@ -54,13 +54,16 @@ class BuddyAvatarRenderInstrumentedTest {
         repeat(3) { compose.mainClock.advanceTimeBy(LOOP_WINDOW_MS / 3) }
         compose.onNodeWithTag(TAG).assertExists()
 
-        Avatars.ALL.forEach { s ->
-            AvatarMood.entries.forEach { m ->
-                compose.runOnIdle { species.value = s; mood.value = m }
-                repeat(2) {
-                    compose.mainClock.advanceTimeBy(LOOP_WINDOW_MS / 2 + 16)
+        listOf(true, false).forEach { isDark ->
+            compose.runOnIdle { dark.value = isDark }
+            Avatars.ALL.forEach { s ->
+                AvatarMood.entries.forEach { m ->
+                    compose.runOnIdle { species.value = s; mood.value = m }
+                    repeat(2) {
+                        compose.mainClock.advanceTimeBy(LOOP_WINDOW_MS / 2 + 16)
+                    }
+                    compose.onNodeWithTag(TAG).assertExists()
                 }
-                compose.onNodeWithTag(TAG).assertExists()
             }
         }
 
@@ -89,6 +92,7 @@ class BuddyAvatarRenderInstrumentedTest {
         val churn = listOf(
             AvatarMood.SLEEPY, AvatarMood.TALKING, AvatarMood.LISTENING,
             AvatarMood.THINKING, AvatarMood.SAD, AvatarMood.HAPPY,
+            AvatarMood.ACKNOWLEDGING, AvatarMood.REASSURING,
             AvatarMood.NEUTRAL, AvatarMood.SAD, AvatarMood.HAPPY
         )
         churn.forEachIndexed { index, next ->

@@ -226,6 +226,15 @@ internal fun avatarPoseFor(mood: AvatarMood, t: Float): Pose {
             showSparkles = true,
             tailWag = sin(tau * t * 6f)
         )
+        AvatarMood.ACKNOWLEDGING -> Pose(
+            bobY = abs(sin(tau * t * 3f)) * 1.8f,
+            eyeOpen = 0.85f, browRaiseL = 0.5f, browRaiseR = 0.5f, earPerk = 1f,
+            mouthOpen = 0.12f, tailWag = sin(tau * t * 2f)
+        )
+        AvatarMood.REASSURING -> Pose(
+            breath = sin(tau * t), tiltDeg = 3f, eyeOpen = 0.75f,
+            mouthOpen = 0.15f, armPose = ArmPose.CUP, tailWag = sin(tau * t) * 0.4f
+        )
         AvatarMood.SAD -> Pose(
             breath = sin(tau * t * 2f),
             tiltDeg = -6f,

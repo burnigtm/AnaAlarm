@@ -3,7 +3,7 @@ name: Android quality
 # Decision: GitHub Actions remains the only CI/signing runner. Cursor Origin
 # https://origin.cursor.com/acidburn/AnaAlarm.git is the source of truth, but
 # Actions does not run there. Push the same commit to github.com/burnigtm/AnaAlarm
-# (see CONTRIBUTING.md and scripts/push-ci-mirror.ps1) so Host, API 26, API 36,
+# (see CONTRIBUTING.md and scripts/push-ci-mirror.ps1) so Host, API 26, API 31, API 36,
 # and the gated installable APK still execute. Secrets stay in the GitHub
 # Environment internal-distribution. Do not weaken these gates.
 # Play Store / bundleRelease is out of scope (docs/PLAY_RELEASE_CHECKLIST.md).
@@ -132,7 +132,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api-level: [26, 36]
+        api-level: [26, 31, 36]
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -173,9 +173,32 @@ jobs:
             app/build/outputs/androidTest-results/
           if-no-files-found: warn
 
+  coverage:
+    name: Merged voice and app coverage
+    if: always() && needs.host.result == 'success'
+    needs: [host, device]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: android-device-api-*
+          path: artifacts
+      - name: Report and enforce coverage
+        run: bash ./gradlew :app:appCoverageReport :app:verifyVoiceCoverage --dependency-verification=strict
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: android-coverage
+          path: app/build/reports/jacoco/
+
   installable:
     name: Installable APK
-    needs: [host, device]
+    needs: [host, device, coverage]
     if: >-
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')

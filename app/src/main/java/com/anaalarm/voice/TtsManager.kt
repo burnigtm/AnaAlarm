@@ -30,7 +30,11 @@ enum class TtsState { INITIALIZING, READY, FAILED, SHUTDOWN }
  * matched by utterance ID, so a delayed callback from a flushed utterance cannot advance a newer
  * conversation turn.
  */
-class TtsManager(context: Context) : TurnSpeaker {
+class TtsManager internal constructor(
+    context: Context,
+    enginePackage: String? = null,
+    engineFactory: (Context, TextToSpeech.OnInitListener, String?) -> TextToSpeech = { ctx, listener, engine -> TextToSpeech(ctx, listener, engine) }
+) : SpeechOutput {
 
     private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -47,9 +51,9 @@ class TtsManager(context: Context) : TurnSpeaker {
     private lateinit var tts: TextToSpeech
 
     init {
-        tts = TextToSpeech(appContext) { status ->
+        tts = engineFactory(appContext, TextToSpeech.OnInitListener { status ->
             mainHandler.post { handleInit(status) }
-        }
+        }, enginePackage)
         val timeout = Runnable {
             if (state.value == TtsState.INITIALIZING) {
                 Log.e(TAG, "TTS engine initialization timed out")
@@ -60,11 +64,13 @@ class TtsManager(context: Context) : TurnSpeaker {
         mainHandler.postDelayed(timeout, INIT_TIMEOUT_MS)
     }
 
-    val isReady: Boolean get() = state.value == TtsState.READY
+    override var onFocusLost: (() -> Unit)? = null
+
+    override val isReady: Boolean get() = state.value == TtsState.READY
     val isFailed: Boolean get() = state.value == TtsState.FAILED
     val currentState: TtsState get() = state.value
 
-    suspend fun awaitReady(timeoutMs: Long = 10_000L): Boolean {
+    override suspend fun awaitReady(timeoutMs: Long): Boolean {
         if (state.value == TtsState.READY) return true
         if (state.value != TtsState.INITIALIZING) return false
         return withTimeoutOrNull(timeoutMs) {
@@ -72,7 +78,7 @@ class TtsManager(context: Context) : TurnSpeaker {
         } ?: false
     }
 
-    fun setLanguage(languageCode: String) {
+    override fun setLanguage(languageCode: String) {
         val locale = when (languageCode) {
             "pt" -> Locale("pt", "BR")
             else -> Locale.US
@@ -80,11 +86,11 @@ class TtsManager(context: Context) : TurnSpeaker {
         runWhenReady { ensureLanguage(locale) }
     }
 
-    fun setPitch(pitch: Float) {
+    override fun setPitch(pitch: Float) {
         runWhenReady { tts.setPitch(pitch.coerceIn(0.5f, 2.0f)) }
     }
 
-    fun setSpeechRate(rate: Float) {
+    override fun setSpeechRate(rate: Float) {
         runWhenReady { tts.setSpeechRate(rate.coerceIn(0.5f, 2.0f)) }
     }
 
@@ -93,10 +99,10 @@ class TtsManager(context: Context) : TurnSpeaker {
      * reports that this exact utterance started, which is the safe point to silence alarm audio.
      * [completion] is always called for accepted/failed speech, except when [stop] cancels it.
      */
-    fun speak(
+    override fun speak(
         text: String,
-        onStart: () -> Unit = {},
-        completion: () -> Unit = {}
+        onStart: () -> Unit,
+        completion: () -> Unit
     ) {
         val request = SpeakRequest(
             text = text.trim(),
@@ -113,7 +119,7 @@ class TtsManager(context: Context) : TurnSpeaker {
         }
     }
 
-    fun stop() {
+    override fun stop() {
         // Invalidate before posting cleanup so a background-thread speak() already queued on the
         // main looper cannot start after Stop.
         requestGeneration.invalidate()
@@ -132,7 +138,8 @@ class TtsManager(context: Context) : TurnSpeaker {
         if (Looper.myLooper() == Looper.getMainLooper()) stop() else mainHandler.post(stop)
     }
 
-    fun shutdown() {
+    override fun shutdown() {
+        onFocusLost = null
         requestGeneration.invalidate()
         val shutdown = shutdown@{
             if (state.value == TtsState.SHUTDOWN) return@shutdown
@@ -253,8 +260,8 @@ class TtsManager(context: Context) : TurnSpeaker {
         }
 
         val params = Bundle().apply {
-            putString(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC.toString())
-            putString(TextToSpeech.Engine.KEY_PARAM_VOLUME, "1.0")
+            putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
+            putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
         }
         Log.i(TAG, "speak len=${request.text.length} id=$id")
         val result = tts.speak(request.text, TextToSpeech.QUEUE_FLUSH, params, id)
@@ -371,8 +378,8 @@ class TtsManager(context: Context) : TurnSpeaker {
         )
 
         val params = Bundle().apply {
-            putString(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC.toString())
-            putString(TextToSpeech.Engine.KEY_PARAM_VOLUME, "1.0")
+            putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
+            putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
         }
         Log.i(TAG, "speakQueued len=${request.text.length} id=$id flush=${request.flush}")
         // The turn's first phrase flushes prior audio; later phrases append so earlier speech is
@@ -519,7 +526,11 @@ class TtsManager(context: Context) : TurnSpeaker {
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 )
-                .setOnAudioFocusChangeListener { }
+                .setOnAudioFocusChangeListener { change ->
+                    if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+                        mainHandler.post { stop(); onFocusLost?.invoke() }
+                    }
+                }
                 .build()
             focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
             focusRequest = req
@@ -556,9 +567,7 @@ class TtsManager(context: Context) : TurnSpeaker {
 
     /** Releases focus only when no utterance — single or queued — is still outstanding. */
     private fun abandonAudioFocusIfIdle() {
-        if (utterances.hasActive() || queuedUtterances.outstandingCount() > 0 ||
-            pendingSpeak != null && pendingSpeak!!.text.isNotEmpty()
-        ) {
+        if (utterances.hasActive() || queuedUtterances.outstandingCount() > 0) {
             return
         }
         abandonAudioFocus()

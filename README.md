@@ -66,6 +66,9 @@ The follow-up memory makes the conversation personal. Completed conversations pr
 local recap and, when memory is enabled, automatically extracted facts and goals. You can inspect,
 edit, forget, or disable those memories in **Settings → What Ana remembers**.
 
+The optional [offline morning routine and voice controls](docs/VOICE_COMPANION.md) add spoken
+habit completion, daily priorities, challenge answers, and richer buddy reactions.
+
 See [the companion upgrade guide](docs/COMPANION_UPGRADE.md) for interruption, replay, retry,
 voice previews, and the memory and alarm-state changes.
 
@@ -693,6 +696,7 @@ Longer explanations for each of these: [docs/TROUBLESHOOTING.md](docs/TROUBLESHO
 | [docs/ALARM_SYSTEM.md](docs/ALARM_SYSTEM.md) | Scheduling, permissions, receivers, per-Android-version caveats |
 | [docs/LOCALIZATION.md](docs/LOCALIZATION.md) | How languages work and how to add one |
 | [docs/TESTING.md](docs/TESTING.md) | Automated suites, how to run them, and the manual QA checklist |
+| [docs/VOICE_VALIDATION.md](docs/VOICE_VALIDATION.md) | Executed voice companion test matrix, coverage, and emulator evidence |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Origin-primary remotes, GitHub CI mirror, Windows/WSL Origin CLI |
 | [docs/CI_AND_INSTALLABLE_BUILDS.md](docs/CI_AND_INSTALLABLE_BUILDS.md) | GitHub Actions gates, APK download, signing, mirroring from Origin |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Symptom-by-symptom fixes |

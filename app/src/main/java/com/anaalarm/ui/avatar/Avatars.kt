@@ -37,7 +37,9 @@ enum class AvatarMood {
     /** Celebration: bounce jump, closed happy eyes, sparkle burst. */
     HAPPY,
     /** Wrong answer / error: droop, sad brows, sweat drop. */
-    SAD
+    SAD,
+    ACKNOWLEDGING,
+    REASSURING
 }
 
 /** Per-species palette consumed by [AnimalAvatar]. */

@@ -101,6 +101,7 @@ fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false, onMemorie
     var language by rememberSaveable { mutableStateOf("en") }
     var habits by rememberSaveable { mutableStateOf("") }
     var interests by rememberSaveable { mutableStateOf("") }
+    var sessionMode by rememberSaveable { mutableStateOf(com.anaalarm.data.SessionModes.CONVERSATION) }
     var sessionMinutes by rememberSaveable { mutableIntStateOf(10) }
     var pronouns by rememberSaveable { mutableStateOf(com.anaalarm.data.Pronouns.NEUTRAL) }
     var tone by rememberSaveable { mutableStateOf(com.anaalarm.data.Tones.UPBEAT) }
@@ -163,6 +164,7 @@ fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false, onMemorie
                 language = s.language
                 habits = s.habits.joinToString(", ")
                 interests = s.interests.joinToString(", ")
+                sessionMode = s.sessionMode
                 sessionMinutes = s.sessionMinutes
                 pronouns = s.pronouns
                 tone = s.tone
@@ -187,6 +189,7 @@ fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false, onMemorie
         language = s.language
         habits = s.habits.joinToString(", ")
         interests = s.interests.joinToString(", ")
+        sessionMode = s.sessionMode
         sessionMinutes = s.sessionMinutes
         pronouns = s.pronouns
         tone = s.tone
@@ -267,7 +270,7 @@ fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false, onMemorie
                 onValueChange = { name = it },
                 label = { Text(context.getString(R.string.name_hint)) },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().testTag("settings_name")
             )
 
             Spacer(Modifier.height(16.dp))
@@ -448,6 +451,20 @@ fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false, onMemorie
             )
 
             Spacer(Modifier.height(16.dp))
+            SectionTitle(context.getString(R.string.session_mode))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = sessionMode == com.anaalarm.data.SessionModes.CONVERSATION,
+                    onClick = { sessionMode = com.anaalarm.data.SessionModes.CONVERSATION },
+                    label = { Text(context.getString(R.string.session_conversation)) }
+                )
+                FilterChip(
+                    selected = sessionMode == com.anaalarm.data.SessionModes.ROUTINE,
+                    onClick = { sessionMode = com.anaalarm.data.SessionModes.ROUTINE },
+                    label = { Text(context.getString(R.string.session_routine)) }
+                )
+            }
+            Spacer(Modifier.height(16.dp))
             SectionTitle(context.getString(R.string.session_minutes))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -555,6 +572,7 @@ fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false, onMemorie
                             language = language,
                             habits = habits.split(","),
                             interests = interests.split(","),
+                            sessionMode = sessionMode,
                             sessionMinutes = sessionMinutes,
                             pronouns = pronouns,
                             tone = tone,

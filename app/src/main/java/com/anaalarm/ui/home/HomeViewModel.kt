@@ -24,6 +24,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 
 sealed interface HomeNotice {
+    data object PrioritySaveFailed : HomeNotice
     data class ScheduleFailed(val reason: AlarmScheduleResult.Failed.Reason) : HomeNotice
 }
 
@@ -36,14 +37,19 @@ data class UpcomingAlarm(
 class HomeViewModel(
     private val memory: MemoryStore,
     private val scheduler: AlarmScheduler,
-    private val settingsStore: SettingsStore
+    private val settingsStore: SettingsStore,
+    private val today: () -> LocalDate = { LocalDate.now() }
 ) : ViewModel() {
 
     val alarms: StateFlow<List<AlarmEntity>> = memory.alarms
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private var recapDate: LocalDate? = null
     val upcomingAlarm: StateFlow<UpcomingAlarm?> = alarms
-        .combine(minuteTicker()) { list, _ -> upcoming(list, LocalDateTime.now()) }
+        .combine(minuteTicker()) { list, _ ->
+            if (recapDate != today()) refreshRecap()
+            upcoming(list, LocalDateTime.now())
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     private val _notices = MutableSharedFlow<HomeNotice>(extraBufferCapacity = 1)
@@ -52,6 +58,8 @@ class HomeViewModel(
     /** Today's durable conversation summary; null while there is nothing to recap yet. */
     private val _recap = MutableStateFlow<String?>(null)
     val recap: StateFlow<String?> = _recap.asStateFlow()
+    private val _priority = MutableStateFlow<String?>(null)
+    val priority: StateFlow<String?> = _priority.asStateFlow()
 
     /** Habit names already marked done today. */
     private val _habitsDone = MutableStateFlow<Set<String>>(emptySet())
@@ -77,6 +85,7 @@ class HomeViewModel(
         }
         refreshRecap()
         viewModelScope.launch { memory.dailyLogs.collect { refreshRecap() } }
+        viewModelScope.launch { memory.priorities.collect { refreshRecap() } }
     }
 
     private fun applyBuddyAndHabits(stored: com.anaalarm.data.AppSettings) {
@@ -87,7 +96,9 @@ class HomeViewModel(
     /** Reloads the recap card's inputs; cheap local queries, no network involved. */
     fun refreshRecap() {
         viewModelScope.launch {
-            val today = LocalDate.now()
+            val today = today()
+            recapDate = today
+            _priority.value = memory.priority(today)?.content
             _recap.value = memory.todaySummary().trim().ifBlank { null }
             _habitsDone.value = memory.habitsForDate(today)
                 .filter { it.done }
@@ -99,6 +110,13 @@ class HomeViewModel(
             _streaks.value = runCatching {
                 memory.habitStreaks(names, today)
             }.getOrDefault(emptyMap())
+        }
+    }
+
+    fun savePriority(content: String) {
+        viewModelScope.launch {
+            runCatching { memory.savePriority(content, today()) }.onFailure { _notices.tryEmit(HomeNotice.PrioritySaveFailed) }
+            refreshRecap()
         }
     }
 

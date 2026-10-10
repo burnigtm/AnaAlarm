@@ -23,31 +23,38 @@ import java.util.concurrent.atomic.AtomicLong
  */
 class SpeechListener internal constructor(
     context: Context,
-    private val recognizerAvailabilityOverride: (() -> Boolean)? = null
-) {
+    private val recognizerAvailabilityOverride: (() -> Boolean)? = null,
+    private val recognizerComponent: android.content.ComponentName? = null,
+    private val recognizerFactory: ((Boolean) -> SpeechRecognizer)? = null,
+    private val preferOnDevice: Boolean? = null
+) : SpeechInput {
 
     private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
     private val generations = RecognitionGeneration()
 
     private var recognizer: SpeechRecognizer? = null
+    private val retiredRecognizers = mutableListOf<SpeechRecognizer>()
     private var usingOnDeviceRecognizer = false
     private var forceDefaultRecognizer = false
 
-    var onResult: ((String) -> Unit)? = null
-    var onPartialResult: ((String) -> Unit)? = null
-    var onError: ((Int) -> Unit)? = null
+    override var onResult: ((String) -> Unit)? = null
+    override var onPartialResult: ((String) -> Unit)? = null
+    override var onError: ((Int) -> Unit)? = null
     var onStarted: (() -> Unit)? = null
+    override var onReady: (() -> Unit)? = null
+    override var onSpeechActivity: ((Boolean) -> Unit)? = null
+    override var onLevel: ((Float) -> Unit)? = null
 
     @Volatile
-    var isListening = false
+    override var isListening = false
         private set
 
     @Volatile
     var lastErrorCode: Int? = null
         private set
 
-    val isAvailable: Boolean
+    override val isAvailable: Boolean
         get() = recognizerAvailabilityOverride?.let { availabilityCheck ->
             runCatching { availabilityCheck() }.getOrDefault(false)
         } ?: runCatching {
@@ -56,10 +63,9 @@ class SpeechListener internal constructor(
             onDeviceAvailable || SpeechRecognizer.isRecognitionAvailable(appContext)
         }.getOrDefault(false)
 
-    fun startListening(languageTag: String) {
+    override fun startListening(languageTag: String) {
         val generation = generations.next()
         val startedAtNanos = LatencyMetrics.nowNanos()
-        isListening = false
         if (Looper.myLooper() == Looper.getMainLooper()) {
             startOnMain(languageTag, generation, startedAtNanos)
         } else {
@@ -81,7 +87,16 @@ class SpeechListener internal constructor(
 
         // Invalidate any work still queued inside the previous engine request before swapping its
         // listener. Its callbacks carry an older generation and are ignored.
-        runCatching { recognizer?.cancel() }
+        // SpeechRecognizer swaps its internal delegate asynchronously. Reusing that delegate
+        // can label the old request's cancellation error with the new generation. Each request
+        // gets its own platform object, so even queued binder callbacks retain the old listener.
+        recognizer?.let { old ->
+            if (isListening) runCatching { old.cancel() }
+            retiredRecognizers += old
+        }
+        isListening = false
+        recognizer = null
+        usingOnDeviceRecognizer = false
         val engine = ensureRecognizer()
         if (engine == null) {
             deliverError(generation, SpeechRecognizer.ERROR_CLIENT, startedAtNanos, false)
@@ -142,18 +157,25 @@ class SpeechListener internal constructor(
         onDevice: Boolean
     ) = object : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) {
-            if (generations.isCurrent(generation)) Log.i(TAG, "onReadyForSpeech")
+            if (generations.isCurrent(generation)) {
+                Log.i(TAG, "onReadyForSpeech"); onReady?.invoke()
+                // The new binder session is established before retiring the previous connection.
+                // Destroying it earlier can disconnect a shared vendor service during rebinding.
+                mainHandler.post { retireOldRecognizers() }
+            }
         }
 
         override fun onBeginningOfSpeech() {
-            if (generations.isCurrent(generation)) Log.i(TAG, "onBeginningOfSpeech")
+            if (generations.isCurrent(generation)) { Log.i(TAG, "onBeginningOfSpeech"); onSpeechActivity?.invoke(true) }
         }
 
-        override fun onRmsChanged(rmsdB: Float) = Unit
+        override fun onRmsChanged(rmsdB: Float) {
+            if (generations.isCurrent(generation)) onLevel?.invoke(if (rmsdB.isFinite()) ((rmsdB + 2f) / 12f).coerceIn(0f, 1f) else 0f)
+        }
         override fun onBufferReceived(buffer: ByteArray?) = Unit
 
         override fun onEndOfSpeech() {
-            if (generations.isCurrent(generation)) Log.i(TAG, "onEndOfSpeech")
+            if (generations.isCurrent(generation)) { Log.i(TAG, "onEndOfSpeech"); onSpeechActivity?.invoke(false) }
         }
 
         override fun onError(error: Int) {
@@ -231,6 +253,7 @@ class SpeechListener internal constructor(
         mainHandler.post {
             if (!generations.complete(generation)) return@post
             isListening = false
+            retireOldRecognizers()
             lastErrorCode = null
             LatencyMetrics.recordAt(
                 metric = LatencyMetric.ASR_START_TO_FINAL,
@@ -255,6 +278,7 @@ class SpeechListener internal constructor(
         mainHandler.post {
             if (!generations.complete(generation)) return@post
             isListening = false
+            retireOldRecognizers()
             lastErrorCode = error
             LatencyMetrics.recordAt(
                 metric = LatencyMetric.ASR_START_TO_FINAL,
@@ -269,55 +293,71 @@ class SpeechListener internal constructor(
         }
     }
 
-    fun stopListening() {
+    override fun stopListening() {
+        val wasListening = isListening
         generations.invalidate()
         isListening = false
         val stop = {
             runCatching {
-                recognizer?.stopListening()
-                recognizer?.cancel()
+                if (wasListening) recognizer?.cancel()
             }
             Unit
         }
         if (Looper.myLooper() == Looper.getMainLooper()) stop() else mainHandler.post(stop)
     }
 
-    fun destroy() {
+    override fun destroy() {
         generations.invalidate()
         isListening = false
         onResult = null
         onPartialResult = null
         onError = null
         onStarted = null
+        onReady = null
+        onSpeechActivity = null
+        onLevel = null
         val destroy = {
             runCatching { recognizer?.destroy() }
             recognizer = null
+            retireOldRecognizers()
             usingOnDeviceRecognizer = false
         }
         if (Looper.myLooper() == Looper.getMainLooper()) destroy() else mainHandler.post(destroy)
     }
 
+    private fun retireOldRecognizers() {
+        retiredRecognizers.forEach { runCatching { it.destroy() } }
+        retiredRecognizers.clear()
+    }
+
     private fun ensureRecognizer(): SpeechRecognizer? {
-        recognizer?.let { return it }
         recognizer = runCatching {
-            if (
-                !forceDefaultRecognizer &&
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)
-            ) {
-                usingOnDeviceRecognizer = true
-                Log.i(TAG, "Using on-device SpeechRecognizer")
-                SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
-            } else {
-                usingOnDeviceRecognizer = false
-                Log.i(TAG, "Using default SpeechRecognizer")
-                SpeechRecognizer.createSpeechRecognizer(appContext)
+            val onDevice = !forceDefaultRecognizer && (preferOnDevice ?: (
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)
+            ))
+            when {
+                recognizerComponent != null -> {
+                    usingOnDeviceRecognizer = false
+                    SpeechRecognizer.createSpeechRecognizer(appContext, recognizerComponent)
+                }
+                recognizerFactory != null -> {
+                    usingOnDeviceRecognizer = onDevice
+                    recognizerFactory.invoke(onDevice)
+                }
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && onDevice -> {
+                    usingOnDeviceRecognizer = true
+                    SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
+                }
+                else -> {
+                    usingOnDeviceRecognizer = false
+                    SpeechRecognizer.createSpeechRecognizer(appContext)
+                }
             }
         }.recoverCatching {
             usingOnDeviceRecognizer = false
             forceDefaultRecognizer = true
             Log.w(TAG, "On-device recognizer creation failed; using default", it)
-            SpeechRecognizer.createSpeechRecognizer(appContext)
+            recognizerFactory?.invoke(false) ?: SpeechRecognizer.createSpeechRecognizer(appContext)
         }.onFailure {
             Log.e(TAG, "createSpeechRecognizer failed", it)
         }.getOrNull()
@@ -349,6 +389,10 @@ class SpeechListener internal constructor(
             SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "ERROR_RECOGNIZER_BUSY"
             SpeechRecognizer.ERROR_SERVER -> "ERROR_SERVER"
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "ERROR_SPEECH_TIMEOUT"
+            10 -> "ERROR_TOO_MANY_REQUESTS"
+            11 -> "ERROR_SERVER_DISCONNECTED"
+            14 -> "ERROR_CANNOT_CHECK_SUPPORT"
+            15 -> "ERROR_CANNOT_LISTEN_TO_DOWNLOAD_EVENTS"
             ERROR_LANGUAGE_NOT_SUPPORTED -> "ERROR_LANGUAGE_NOT_SUPPORTED"
             ERROR_LANGUAGE_UNAVAILABLE -> "ERROR_LANGUAGE_UNAVAILABLE"
             else -> "UNKNOWN($code)"

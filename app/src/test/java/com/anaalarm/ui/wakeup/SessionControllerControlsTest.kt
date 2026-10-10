@@ -32,6 +32,8 @@ class SessionControllerControlsTest {
             every { app.settingsStore.settings } returns flowOf(AppSettings())
             every { app.newConversationEngine() } returns engine
             every { app.ttsManager } returns tts
+            every { app.speechOutput } returns tts
+            every { app.speechInput } returns app.speechListener
             every { app.applicationScope } returns scope
             every { app.speechListener.isAvailable } returns voice
             every { tts.isReady } returns true

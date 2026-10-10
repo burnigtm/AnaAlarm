@@ -157,6 +157,20 @@ class AnaAlarmApp : Application() {
         }
     }
 
+    private var speechInputOverride: com.anaalarm.voice.SpeechInput? = null
+    private var speechOutputOverride: com.anaalarm.voice.SpeechOutput? = null
+    internal val speechInput: com.anaalarm.voice.SpeechInput get() = speechInputOverride ?: speechListener
+    internal val speechOutput: com.anaalarm.voice.SpeechOutput get() = speechOutputOverride ?: ttsManager
+
+    @VisibleForTesting
+    internal fun overrideVoice(input: com.anaalarm.voice.SpeechInput?, output: com.anaalarm.voice.SpeechOutput?) {
+        check(BuildConfig.DEBUG) { "Voice overrides require a debug build" }
+        speechInputOverride?.destroy()
+        speechOutputOverride?.shutdown()
+        speechInputOverride = input
+        speechOutputOverride = output
+    }
+
     private companion object {
         const val TAG = "AnaAlarm"
     }

@@ -36,6 +36,7 @@ internal class SessionDismissal(
         var activeChallenge: StopChallengeUi?
         var everSpoken: Boolean
         fun pauseForChallenge()
+        fun resumeAfterSnoozeFailure()
         fun resumeAfterChallenge()
         fun requestStop()
         fun stopChallengeType(): DismissalChallenges.Type
@@ -143,7 +144,7 @@ internal class SessionDismissal(
     }
 
     fun snoozeNow() {
-        if (!snoozeAvailable || host.snoozeInFlight || host.isEnding() || host.isDisposed()) return
+        if (!snoozeAvailable || host.snoozeInFlight || host.isEnded() || host.isEnding() || host.isDisposed()) return
         host.snoozeInFlight = true
         host.errorText = null
         snoozeJob = scope.launch {
@@ -170,6 +171,7 @@ internal class SessionDismissal(
                         R.string.snooze_failed
                     }
                 )
+                host.resumeAfterSnoozeFailure()
             }
         }
     }
@@ -202,7 +204,7 @@ internal class SessionDismissal(
         host.aiText = text
         host.status = SessionStatus.SPEAKING
         val generation = host.nextTtsGeneration()
-        app.ttsManager.speak(
+        app.speechOutput.speak(
             text = text,
             onStart = {
                 if (generation == host.currentTtsGeneration() &&

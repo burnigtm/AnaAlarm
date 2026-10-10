@@ -63,6 +63,20 @@ class AnaDatabaseMigrationInstrumentedTest {
         assertTrue(migrated.hasIndex("index_messages_timestamp"))
     }
 
+    @Test
+    fun migrateEightToNinePreservesMemoryAndSupportsReplacingDailyPriority() {
+        helper.createDatabase(TEST_DATABASE, 8).apply {
+            execSQL("INSERT INTO companion_memories (content,normalized,kind,inferred,deleted,updatedAt) VALUES ('Read','read','goal',0,0,1)")
+            close()
+        }
+        val migrated = helper.runMigrationsAndValidate(TEST_DATABASE, 9, true, AnaDatabase.MIGRATION_8_9)
+        assertEquals("Read", migrated.scalar("SELECT content FROM companion_memories"))
+        migrated.execSQL("INSERT INTO daily_priorities (date,content,updatedAt) VALUES ('2026-10-10','First',1)")
+        migrated.execSQL("INSERT OR REPLACE INTO daily_priorities (date,content,updatedAt) VALUES ('2026-10-10','Second',2)")
+        assertEquals("1", migrated.scalar("SELECT COUNT(*) FROM daily_priorities"))
+        assertEquals("Second", migrated.scalar("SELECT content FROM daily_priorities"))
+    }
+
     private fun SupportSQLiteDatabase.scalar(query: String): String? =
         query(query).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
 

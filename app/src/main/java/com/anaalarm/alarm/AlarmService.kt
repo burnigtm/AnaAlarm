@@ -402,6 +402,9 @@ class AlarmService : Service() {
         pending.send(this, 0, null, null, null, null, options)
     }
 
+    // AlarmService declares systemExempted in the main manifest. The debug speech services
+    // are bound services with no foreground type and never call this helper.
+    @android.annotation.SuppressLint("ForegroundServiceType")
     private fun startAsForeground(notificationId: Int, notification: Notification) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {

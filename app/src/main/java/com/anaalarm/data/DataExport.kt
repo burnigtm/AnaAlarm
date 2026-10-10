@@ -36,7 +36,8 @@ object DataExport {
          * which leaves the buddy the user already picked unchanged.
          */
         val avatar: String? = null,
-        val memoryEnabled: Boolean? = null
+        val memoryEnabled: Boolean? = null,
+        val sessionMode: String? = null
     )
 
     @Serializable
@@ -58,6 +59,9 @@ object DataExport {
         val inferred: Boolean, val deleted: Boolean, val updatedAt: Long)
 
     @Serializable
+    data class DailyPriorityExport(val date: String, val content: String, val updatedAt: Long)
+
+    @Serializable
     data class Payload(
         val format: String = FORMAT,
         val version: Int = VERSION,
@@ -66,7 +70,8 @@ object DataExport {
         val dailyLogs: List<ExportedLog> = emptyList(),
         val sessions: List<ExportedSession> = emptyList(),
         val habits: List<ExportedHabit> = emptyList(),
-        val memories: List<ExportedMemory> = emptyList()
+        val memories: List<ExportedMemory> = emptyList(),
+        val priorities: List<DailyPriorityExport> = emptyList()
     )
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -75,6 +80,7 @@ object DataExport {
     suspend fun build(memory: MemoryStore, settingsStore: SettingsStore): Payload {
         val settings = settingsStore.settings.first()
         return Payload(
+            priorities = memory.exportablePriorities().map { DailyPriorityExport(it.date, it.content, it.updatedAt) },
             exportedAtEpochMs = System.currentTimeMillis(),
             settings = ExportedSettings(
                 name = settings.name,
@@ -88,7 +94,8 @@ object DataExport {
                 voicePitch = settings.voicePitch,
                 voiceRate = settings.voiceRate,
                 avatar = settings.avatar,
-                memoryEnabled = settings.memoryEnabled
+                memoryEnabled = settings.memoryEnabled,
+                sessionMode = settings.sessionMode
             ),
             dailyLogs = memory.exportableDailyLogs().map {
                 ExportedLog(date = it.date, summary = it.summary)
@@ -127,8 +134,12 @@ object DataExport {
     /** Merges a payload into local stores; returns the number of restored rows. */
     suspend fun restore(payload: Payload, memory: MemoryStore, settingsStore: SettingsStore): Int {
         var restored = 0
+        payload.priorities.forEach {
+            if (memory.restorePriority(DailyPriorityEntity(it.date, it.content, it.updatedAt))) restored++
+        }
         payload.settings?.let { s ->
             settingsStore.update(
+                sessionMode = s.sessionMode,
                 name = s.name,
                 language = s.language,
                 habits = s.habits,

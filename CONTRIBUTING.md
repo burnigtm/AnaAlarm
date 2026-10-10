@@ -3,7 +3,7 @@
 ## Remotes (Origin primary, GitHub CI mirror)
 
 **Cursor Origin** is the source of truth. **GitHub** is the CI and signing
-mirror: GitHub Actions runs Host checks, API 26/36 emulator suites, and the
+mirror: GitHub Actions runs Host checks, API 26/31/36 emulator suites, coverage, and the
 gated `com.anaalarm.internal` APK. Secrets never live in Origin or in this
 repository.
 
@@ -62,12 +62,12 @@ equivalent pipeline, every commit that should be gated must also reach GitHub:
 ```
 
 That pushes `HEAD` to the `github` remote (create it if missing). Open PRs
-against the GitHub mirror for required checks (Host, API 26, API 36). Do **not**
+against the GitHub mirror for checks (Host, API 26/31/36, and merged coverage). Do **not**
 mark `Installable APK` as a required PR check; it is supposed to skip on PRs.
 Signing secrets stay in the GitHub Environment `internal-distribution`.
 
 Do not weaken `--dependency-verification=strict`, SHA-pinned actions, or the
-37 + 204 zero-skip device gates.
+37 + 15 + 230 zero-skip device gates, or the 90% line / 85% branch voice coverage gate.
 
 ## Local development
 

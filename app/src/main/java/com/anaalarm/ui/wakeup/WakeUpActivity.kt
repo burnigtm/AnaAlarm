@@ -70,6 +70,7 @@ class WakeUpActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        sessionViewModel.controller?.refreshVoiceAvailability()
         transitionFromDirectBootIfUnlocked()
     }
 
@@ -83,7 +84,7 @@ class WakeUpActivity : ComponentActivity() {
         return ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED && app.speechListener.isAvailable
+        ) == PackageManager.PERMISSION_GRANTED && app.speechInput.isAvailable
     }
 
     private fun installContent() {
@@ -157,6 +158,8 @@ class WakeUpActivity : ComponentActivity() {
         sessionViewModel.ensureSession(alarmId, voiceAvailable())
         installContent()
     }
+
+    internal fun sessionControllerForTest(): SessionController? = sessionViewModel.controller
 
     internal fun activeAlarmIdForTest(): Long = sessionViewModel.activeAlarmId
     internal fun controllerIdentityForTest(): Int =

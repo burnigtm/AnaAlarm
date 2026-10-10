@@ -40,6 +40,11 @@ class CompanionUiInstrumentedTest {
         scenario = ActivityScenario.launch(Intent(TestEnv.context, MainActivity::class.java)
             .putExtra(MainActivity.EXTRA_EDIT_ALARM_ID, id))
         compose.awaitText(str(R.string.edit_alarm))
+        // API 31 can expose semantics before the window finishes restoring orientation/insets.
+        compose.waitUntil(20_000) { compose.onNodeWithText(str(R.string.edit_alarm)).isDisplayed() }
+        compose.awaitText("08:20")
+        compose.onNodeWithText("08:20").performScrollTo()
+        compose.waitUntil(20_000) { compose.onNodeWithText("08:20").isDisplayed() }
         compose.onNodeWithText("08:20").assertIsDisplayed()
         compose.onAllNodesWithText(str(R.string.wake_up_title)).assertCountEquals(0)
     }
@@ -76,9 +81,10 @@ class CompanionUiInstrumentedTest {
     @Test fun settingsDraftSurvivesVisitingMemoriesAndRecreation() {
         scenario = Screens.launchHome()
         compose.onNodeWithContentDescription(str(R.string.settings)).performClick()
-        compose.onNodeWithText(str(R.string.name_hint)).performScrollTo()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("settings_name").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("settings_name").performScrollTo()
         // The name field is identified by its existing label.
-        compose.onNode(hasSetTextAction() and hasText(str(R.string.name_hint))).performTextReplacement("Taylor")
+        compose.onNodeWithTag("settings_name").performTextReplacement("Taylor")
         compose.onNodeWithText(str(R.string.memory_title)).performScrollTo().performClick()
         compose.awaitText(str(R.string.memory_empty))
         scenario!!.onActivity { it.onBackPressedDispatcher.onBackPressed() }

@@ -12,12 +12,13 @@ import kotlinx.coroutines.launch
 
 /**
  * Microphone listen cycle for a wake session: start, soft-retry, hard fallback to text.
- * Owns generation-scoped timeout/retry jobs; [SessionController] remains the façade.
+ * Owns generation-scoped timeout/retry jobs; [SessionController] remains the faÃ§ade.
  */
 internal class SessionListenCycle(
     private val app: AnaAlarmApp,
     private val scope: CoroutineScope,
-    private val host: Host
+    private val host: Host,
+    private val timing: SessionTiming = SessionTiming()
 ) {
     interface Host {
         fun isTerminal(): Boolean
@@ -32,6 +33,7 @@ internal class SessionListenCycle(
         fun wrapUp()
         fun switchToTextInput(speakPrompt: Boolean)
         fun speak(text: String)
+        fun reassure()
         fun languageTag(): String
         fun isTimeUp(): Boolean
     }
@@ -49,7 +51,7 @@ internal class SessionListenCycle(
         val generation = host.nextVoiceGeneration()
         settleJob?.cancel()
         settleJob = scope.launch {
-            delay(MIC_SETTLE_MS)
+            delay(timing.microphoneSettleMs)
             if (!host.isCurrentVoiceGeneration(generation)) return@launch
             host.status = SessionStatus.LISTENING
             if (host.isTextInputActive()) {
@@ -62,7 +64,7 @@ internal class SessionListenCycle(
 
     fun startListeningAttempt() {
         if (host.isTerminal() || host.isTextInputActive()) return
-        if (!app.speechListener.isAvailable) {
+        if (!app.speechInput.isAvailable) {
             host.switchToTextInput(speakPrompt = true)
             return
         }
@@ -73,11 +75,12 @@ internal class SessionListenCycle(
         host.status = SessionStatus.LISTENING
         host.partialUserText = ""
         host.voiceHint = app.getString(R.string.status_listening)
-        app.speechListener.startListening(host.languageTag())
+        app.speechInput.startListening(host.languageTag())
         listenTimeoutJob = scope.launch {
-            delay(LISTEN_TIMEOUT_MS)
+            delay(timing.listenTimeoutMs)
             if (!host.isCurrentVoiceGeneration(generation) || host.isTextInputActive()) return@launch
-            app.speechListener.stopListening()
+            app.speechInput.stopListening()
+            host.reassure()
             host.silentStreak++
             when {
                 host.isTimeUp() -> host.wrapUp()
@@ -106,9 +109,10 @@ internal class SessionListenCycle(
             code == SpeechRecognizer.ERROR_NETWORK ||
             code == SpeechRecognizer.ERROR_NETWORK_TIMEOUT ||
             code == SpeechRecognizer.ERROR_SERVER ||
-            code == 12 || code == 13
+            code in 10..15
 
         Log.w(TAG, "Speech error ${SpeechListener.errorName(code)} hard=$hardFailure")
+        host.reassure()
         host.voiceHint = app.getString(R.string.mic_error)
         if (hardFailure) {
             host.switchToTextInput(speakPrompt = true)
@@ -123,7 +127,7 @@ internal class SessionListenCycle(
         val generation = host.voiceGeneration()
         listenRetryJob?.cancel()
         listenRetryJob = scope.launch {
-            delay(LISTEN_RETRY_MS)
+            delay(timing.retryMs)
             if (host.isCurrentVoiceGeneration(generation) && !host.isTextInputActive()) {
                 startListeningAttempt()
             }
@@ -138,7 +142,7 @@ internal class SessionListenCycle(
         listenTimeoutJob = null
         listenRetryJob?.cancel()
         listenRetryJob = null
-        if (stopRecognizer) app.speechListener.stopListening()
+        if (stopRecognizer) app.speechInput.stopListening()
     }
 
     companion object {

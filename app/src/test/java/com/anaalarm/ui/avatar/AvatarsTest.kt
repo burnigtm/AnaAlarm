@@ -59,7 +59,9 @@ class AvatarsTest {
                 AvatarMood.LISTENING,
                 AvatarMood.THINKING,
                 AvatarMood.HAPPY,
-                AvatarMood.SAD
+                AvatarMood.SAD,
+                AvatarMood.ACKNOWLEDGING,
+                AvatarMood.REASSURING
             ),
             AvatarMood.entries.toList()
         )

@@ -52,7 +52,7 @@ internal class SessionTurnPipeline(
         host.silentStreak = 0
         host.voiceHint = null
         Log.i(TAG, "Received user speech len=${text.length}")
-        if (SessionPhrases.isStopPhrase(text)) {
+        if (com.anaalarm.voice.VoiceCommands.parse(text) == com.anaalarm.voice.VoiceCommand.STOP) {
             host.requestStop()
             return
         }
@@ -62,7 +62,7 @@ internal class SessionTurnPipeline(
         val generation = host.nextTurnGeneration()
         turnJob = scope.launch {
             try {
-                if (host.streamingEnabled()) {
+                if (host.streamingEnabled() && app.speechOutput.isReady) {
                     runStreamingTurn(text, generation)
                 } else {
                     runLegacyTurn(text, generation)
@@ -91,7 +91,7 @@ internal class SessionTurnPipeline(
     private suspend fun runStreamingTurn(text: String, generation: Long) {
         val coordinator = StreamingTurnCoordinator(
             turnId = StreamingTurnCoordinator.nextTurnId(),
-            ttsManager = app.ttsManager,
+            ttsManager = app.speechOutput,
             onFirstPhraseAudioStarted = {
                 if (generation == host.currentTurnGeneration() && !host.isTerminal()) {
                     host.everSpoken = true
