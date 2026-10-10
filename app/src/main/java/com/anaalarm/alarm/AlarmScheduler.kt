@@ -69,7 +69,17 @@ class AlarmScheduler(
      * This method deliberately never throws. UI and re-arming callers must be able to
      * distinguish a registered alarm from a permission denial or framework failure.
      */
-    fun schedule(alarm: AlarmEntity): AlarmScheduleResult {
+    fun schedule(alarm: AlarmEntity): AlarmScheduleResult = scheduleUnchecked(alarm).also { result ->
+        when (result) {
+            is AlarmScheduleResult.Scheduled -> com.anaalarm.sentinel.SentinelEvents.record(
+                com.anaalarm.sentinel.EventCode.ALARM_SCHEDULED, com.anaalarm.sentinel.EventOutcome.COMPLETED)
+            is AlarmScheduleResult.Failed -> com.anaalarm.sentinel.SentinelEvents.record(
+                com.anaalarm.sentinel.EventCode.ALARM_SCHEDULE_FAILED, com.anaalarm.sentinel.EventOutcome.FAILED)
+            AlarmScheduleResult.Cancelled -> Unit
+        }
+    }
+
+    private fun scheduleUnchecked(alarm: AlarmEntity): AlarmScheduleResult {
         if (!alarm.enabled) {
             return runCatching { cancel(alarm) }.fold(
                 onSuccess = { AlarmScheduleResult.Cancelled },

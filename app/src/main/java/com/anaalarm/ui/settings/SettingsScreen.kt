@@ -73,7 +73,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false, onMemories: () -> Unit = {}) {
+fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false, onMemories: () -> Unit = {}, onSentinel: () -> Unit = {}) {
     val context = LocalContext.current
     val app = context.applicationContext as AnaAlarmApp
     val scope = rememberCoroutineScope()
@@ -558,6 +558,19 @@ fun SettingsScreen(onBack: () -> Unit, scrollToBuddy: Boolean = false, onMemorie
                     Text(context.getString(R.string.import_data))
                 }
             }
+
+            Spacer(Modifier.height(24.dp))
+            SectionTitle(context.getString(R.string.sentinel_title))
+            Text(context.getString(R.string.sentinel_settings_hint))
+            OutlinedButton(onClick = onSentinel, modifier = Modifier.fillMaxWidth().testTag("open-sentinel")) {
+                Text(context.getString(R.string.sentinel_open))
+            }
+            TextButton(onClick = {
+                runCatching {
+                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse(com.anaalarm.sentinel.APK_DOWNLOAD_URL)))
+                }.onFailure { scope.launch { snackbar.showSnackbar(context.getString(R.string.sentinel_failed)) } }
+            }, modifier = Modifier.fillMaxWidth()) { Text(context.getString(R.string.sentinel_download)) }
 
             Spacer(Modifier.height(24.dp))
             Button(

@@ -22,7 +22,8 @@ import java.util.Locale
 class LocalizationInstrumentedTest {
 
     /** Strings that are legitimately identical in both languages. */
-    private val sharedByDesign = setOf("app_name", "language_pt", "name_hint", "buddy_cd")
+    private val sharedByDesign = setOf("app_name", "language_pt", "name_hint", "buddy_cd",
+        "sentinel_title", "sentinel_event", "sentinel_duration")
 
     private fun localized(locale: Locale): Context {
         val config = Configuration(TestEnv.context.resources.configuration)

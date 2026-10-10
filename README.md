@@ -5,6 +5,13 @@
   <strong>Kotlin · Jetpack Compose · Room · DeepSeek-V4-Flash · English + Português (BR)</strong>
 </p>
 
+**[Download AnaAlarm Internal APK](https://github.com/burnigtm/AnaAlarm/releases/latest/download/AnaAlarm-internal.apk)** · [Installation help](docs/CI_AND_INSTALLABLE_BUILDS.md#download-and-install-an-apk)
+
+On your phone: tap the link, open the downloaded APK, allow installation from your browser if
+Android asks, and tap **Install**. The link becomes available after the first approved release.
+Updates keep your AnaAlarm Internal data. Device health checks and shareable local reports are
+available in **Settings → Sentinel**; see [the Sentinel guide](docs/SENTINEL.md).
+
 ---
 
 ## Table of contents

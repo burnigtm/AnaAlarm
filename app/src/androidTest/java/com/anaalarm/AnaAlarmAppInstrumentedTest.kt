@@ -44,6 +44,7 @@ class AnaAlarmAppInstrumentedTest {
         assertNotNull(app.ttsManager)
         assertNotNull(app.speechListener)
         assertNotNull(app.alarmScheduler)
+        assertNotNull(app.sentinelHistory)
         assertTrue("applicationScope must outlive activities", app.applicationScope.isActive)
     }
 

@@ -29,6 +29,8 @@ release/
 .DS_Store
 
 # Test + tooling output
+.cache/
+__pycache__/
 adb-instrument.log
 *-test-run*.log
 emulator*.log
